@@ -378,14 +378,17 @@ export const DashboardTab: React.FC = () => {
     });
   }, [roleFilteredBookings, trackingSubFilter, todayStr]);
 
-  const [singleReceipt, setSingleReceipt] = useState<ReturnType<typeof getBookingReceiptsList>[number] | null>(null);
-  const openReceiptOf = (bk: Booking, kind: 'deposit' | 'remaining' | 'insurance', label: string) => {
-    const item = getBookingReceiptsList(bk).find((r) => r.kind === kind);
-    if (!item) {
-      showToast(`لا يوجد ${label} مرفوع لهذا الحجز بعد`);
+  type ReceiptItem = ReturnType<typeof getBookingReceiptsList>[number];
+  const [receiptGroup, setReceiptGroup] = useState<{ title: string; items: ReceiptItem[] } | null>(null);
+  const receiptsOf = (bk: Booking, kinds: ReceiptItem['kind'][]) =>
+    getBookingReceiptsList(bk).filter((r) => kinds.includes(r.kind));
+  const openReceiptGroup = (bk: Booking, kinds: ReceiptItem['kind'][], title: string) => {
+    const items = receiptsOf(bk, kinds);
+    if (items.length === 0) {
+      showToast(`لا توجد ${title} مرفوعة لهذا الحجز بعد`);
       return;
     }
-    setSingleReceipt(item);
+    setReceiptGroup({ title, items });
   };
 
   const matchesSearch = (b: Booking) => {
@@ -1082,32 +1085,50 @@ ${prop?.iban || 'SA0380000201608010998877'}
     }
   };
 
-  const renderTrackCard = (bk: Booking, trackKey: string) => {
+  const otherTracking =
+    activeFilter === 'all'
+      ? searchFilteredTracking.filter((b) => b.checkInDate !== todayStr && b.checkOutDate !== todayStr)
+      : searchFilteredTracking;
+
+  /** بطاقة دخول اليوم: مسار التتبع + وصول ← المتبقي ← التأمين ← الإيصالات */
+  const renderArrivalCard = (bk: Booking, key: string) => {
     const stages = getBookingStages(bk);
-    const isExpanded = Boolean(expandedBookingIds[trackKey]);
+    const isExpanded = Boolean(expandedBookingIds[key]);
     const propGuard = guardsList?.find((g) => g.assignedPropertyId === bk.propertyId) || guard;
+    const isHamran = bk.propertyId === 'hamran' || bk.propertyName.includes('حمران');
     const isPaidInFull = bk.remainingAmount <= 0;
-    const isInsurancePaid = stages.isInsurancePaid;
-    const refundLabel = bk.insuranceReturned
-      ? 'تم الاسترداد ✓'
-      : bk.insuranceRefundRequested
-      ? 'طلب الاسترداد'
-      : 'استرداد المحول';
-    const receiptKinds = {
-      deposit: getBookingReceiptsList(bk).some((r) => r.kind === 'deposit'),
-      remaining: getBookingReceiptsList(bk).some((r) => r.kind === 'remaining'),
-      insurance: getBookingReceiptsList(bk).some((r) => r.kind === 'insurance'),
-    };
-    const refundTone = bk.insuranceReturned ? 'jadeS' : bk.insuranceRefundRequested ? 'sand' : 'soft';
+    const isInsurancePaid = Boolean(bk.insuranceReceivedCash || bk.insurancePaymentMethod || stages.isInsurancePaid);
+    const arrived = Boolean(bk.guestArrived || bk.arrivalConfirmedAt);
+    const hasBreakfast = !(bk.withoutBreakfast || (!bk.breakfastOption && !bk.breakfastPrice));
+    const hasCoord = Boolean(bk.coordinatorName || bk.coordinatorService);
+    const payCount = receiptsOf(bk, ['deposit', 'remaining']).length;
+    const insCount = receiptsOf(bk, ['insurance']).length;
 
     return (
-      <div key={trackKey} className="kt-bk">
+      <div key={key} className="kt-bk">
         <BkTop bk={bk} todayStr={todayStr} />
+        {isHamran && (
+          <ServicesStrip
+            hasBreakfast={hasBreakfast}
+            breakfastText={`${bk.breakfastOption || 'فطور شامي فاخر'}${bk.breakfastPrice ? ` · ${fmtN(bk.breakfastPrice)} ر.س` : ''}`}
+            hasCoordinator={hasCoord}
+            coordinatorText={`${bk.coordinatorName || 'المنسقة'}${bk.coordinatorService ? ` · ${bk.coordinatorService}` : ''}`}
+          />
+        )}
         <StageTrack bk={bk} todayStr={todayStr} stages={stages} />
 
         <ActSteps
           items={[
-            { key: 'rem', label: 'تذكير', value: 'الحجز', icon: MessageCircle, tone: 'violet', onClick: () => openWelcomeReminderModal(bk), title: 'تذكير الحجز' },
+            {
+              key: 'arr',
+              label: 'وصول',
+              value: arrived ? bk.guestArrivedAt || bk.arrivalConfirmedAt || 'تم ✓' : 'لم يصل',
+              icon: arrived ? CheckCircle2 : Clock,
+              tone: 'jade',
+              done: arrived,
+              onClick: () => handleToggleArrival(bk),
+              title: 'تأكيد وصول النزيل',
+            },
             {
               key: 'bal',
               label: 'المتبقي',
@@ -1116,6 +1137,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
               tone: 'sand',
               done: isPaidInFull,
               onClick: () => openRemainingPaymentModal(bk),
+              title: 'تذكير وسداد المتبقي',
             },
             {
               key: 'ins',
@@ -1125,94 +1147,78 @@ ${prop?.iban || 'SA0380000201608010998877'}
               tone: 'line',
               done: isInsurancePaid,
               onClick: () => openInsuranceActionModal(bk),
+              title: 'استلام التأمين',
             },
             {
-              key: 'ref',
-              label: 'استرداد',
-              value: bk.insuranceReturned ? 'تم ✓' : bk.insuranceRefundRequested ? 'مطلوب' : 'المحول',
-              icon: RotateCcw,
-              tone: bk.insuranceRefundRequested ? 'sand' : 'violet',
-              done: !!bk.insuranceReturned,
-              onClick: () => openInsuranceRefundModal(bk),
-              title: refundLabel,
-            },
-            {
-              key: 'fin',
-              label: 'إنهاء',
-              value: bk.status === 'completed' ? 'منتهي ✓' : 'الحجز',
-              icon: CheckCircle2,
-              tone: 'line',
-              done: bk.status === 'completed',
-              onClick: () => openFinishBookingModal(bk),
-            },
-          ]}
-        />
-        <ActSteps
-          items={[
-            {
-              key: 'det',
-              label: 'تفاصيل',
-              value: 'الحجز',
-              icon: Eye,
-              tone: 'ink',
-              onClick: () => {
-                setDetailsTitle('تفاصيل الحجز الكاملة');
-                setSelectedBookingForDetails(bk);
-              },
-            },
-            {
-              key: 'rc-dep',
-              label: 'إيصال',
-              value: receiptKinds.deposit ? 'العربون' : 'العربون ✕',
+              key: 'rc-pay',
+              label: 'إيصالات',
+              value: `الدفع ${payCount}/2`,
               icon: Wallet,
-              tone: 'sand',
-              done: receiptKinds.deposit,
-              onClick: () => openReceiptOf(bk, 'deposit', 'إيصال العربون'),
-              title: 'نسخة ايصال البنك للعربون',
-            },
-            {
-              key: 'rc-rem',
-              label: 'إيصال',
-              value: receiptKinds.remaining ? 'المتبقي' : 'المتبقي ✕',
-              icon: Receipt,
-              tone: 'jade',
-              done: receiptKinds.remaining,
-              onClick: () => openReceiptOf(bk, 'remaining', 'إيصال المتبقي'),
-              title: 'نسخة ايصال البنك للمتبقي',
+              tone: 'violet',
+              done: payCount > 0,
+              onClick: () => openReceiptGroup(bk, ['deposit', 'remaining'], 'إيصالات الدفع (العربون والمتبقي)'),
+              title: 'نسخة إيصال العربون والمتبقي',
             },
             {
               key: 'rc-ins',
               label: 'إيصال',
-              value: receiptKinds.insurance ? 'التأمين' : 'التأمين ✕',
-              icon: ShieldCheck,
+              value: insCount > 0 ? 'التأمين ✓' : 'التأمين ✕',
+              icon: Receipt,
               tone: 'violet',
-              done: receiptKinds.insurance,
-              onClick: () => openReceiptOf(bk, 'insurance', 'إيصال التأمين'),
-              title: 'نسخة ايصال البنك للتأمين',
+              done: insCount > 0,
+              onClick: () => openReceiptGroup(bk, ['insurance'], 'إيصال التأمين'),
+              title: 'نسخة إيصال التأمين',
             },
           ]}
         />
 
         <Acc
           icon={<Phone size={20} strokeWidth={1.8} />}
-          title="التواصل السريع"
+          title="التواصل والتفاصيل"
           open={isExpanded}
-          onToggle={() => toggleBookingExpanded(trackKey)}
+          onToggle={() => toggleBookingExpanded(key)}
         >
           <ContactList
             customerName={bk.customerName}
-            customerTel={bk.customerCallUrl || buildCustomerCallUrl(bk.customerPhone)}
-            customerWa={bk.customerWhatsappUrl || getWhatsAppCustomerUrl(bk.customerPhone, bk.customerName, bk.propertyName)}
+            customerTel={`tel:${bk.customerPhone}`}
+            customerWa={getWhatsAppCustomerUrl(bk.customerPhone, bk.customerName, bk.propertyName)}
             guardName={propGuard?.name || 'أبو راشد'}
             guardTel={`tel:${propGuard?.phone || '0598881234'}`}
             guardWa={getWhatsAppGuardUrl(bk)}
             adminTel="tel:0500000001"
             adminWa={getWhatsAppAdminUrl(bk)}
           />
+          <Act tone="soft" icon={MessageCircle} label="تذكير الحجز" onClick={() => openWelcomeReminderModal(bk)} />
+          <Act
+            tone="ink"
+            icon={Eye}
+            label="عرض تفاصيل الحجز"
+            onClick={() => {
+              setDetailsTitle('تفاصيل الحجز الكاملة');
+              setSelectedBookingForDetails(bk);
+            }}
+          />
         </Acc>
       </div>
     );
   };
+
+  /** بطاقة مختصرة لباقي الحجوزات: مسار التتبع فقط + عرض التفاصيل */
+  const renderCompactCard = (bk: Booking, key: string) => (
+    <div key={key} className="kt-bk">
+      <BkTop bk={bk} todayStr={todayStr} />
+      <StageTrack bk={bk} todayStr={todayStr} stages={getBookingStages(bk)} />
+      <Act
+        tone="ink"
+        icon={Eye}
+        label="عرض تفاصيل الحجز"
+        onClick={() => {
+          setDetailsTitle('تفاصيل الحجز الكاملة');
+          setSelectedBookingForDetails(bk);
+        }}
+      />
+    </div>
+  );
 
   return (
     <div className="pb-24 sm:pb-28 w-full max-w-[1920px] mx-auto px-2.5 sm:px-6 lg:px-8 pt-3 sm:pt-4 space-y-3.5 sm:space-y-5">
@@ -1311,7 +1317,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
       <SearchBox value={searchTerm} onChange={setSearchTerm} placeholder="ابحث بالاسم أو الجوال أو رقم الحجز" />
 
       {/* ═══ حركات دخول اليوم ═══ */}
-      {activeFilter === 'arrivals' && (
+      {(activeFilter === 'arrivals' || activeFilter === 'all') && (
         <section className="lux-card p-4 space-y-3.5">
           <Head
             title="دخول اليوم"
@@ -1325,7 +1331,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
             <EmptyBox icon={Calendar} text="لا توجد حركات دخول لليوم" />
           ) : (
             <div className="space-y-3">
-              {searchFilteredArrivals.map((bk, idx) => renderTrackCard(bk, bk.id ? `arr-${bk.id}` : `arr-${idx}`))}
+              {searchFilteredArrivals.map((bk, idx) => renderArrivalCard(bk, bk.id ? `arr-${bk.id}` : `arr-${idx}`))}
             </div>
           )}
         </section>
@@ -1375,6 +1381,65 @@ ${prop?.iban || 'SA0380000201608010998877'}
                   />
                 );
 
+                const depStages = getBookingStages(bk);
+                const insRecvCount = receiptsOf(bk, ['insurance', 'insurance_refund']).length;
+                const depSteps: React.ComponentProps<typeof ActSteps>['items'] = [];
+                if (!isGuard) {
+                  depSteps.push({
+                    key: 'rem',
+                    label: 'تذكير',
+                    value: bk.checkoutReminderSent ? 'تم ✓' : 'الخروج',
+                    icon: MessageCircle,
+                    tone: 'violet',
+                    done: Boolean(bk.checkoutReminderSent),
+                    onClick: () => handleMarketerSendCheckoutReminder(bk),
+                    title: 'تذكير بالخروج',
+                  });
+                }
+                depSteps.push({
+                  key: 'exit',
+                  label: 'تم الخروج',
+                  value: exitDone ? exitTime || '✓' : isGuard || hasAdminDashboardActions ? 'تأكيد' : 'بانتظار الحارس',
+                  icon: CheckCircle2,
+                  tone: 'jade',
+                  done: exitDone,
+                  onClick: () => {
+                    if (isGuard) setGuardConfirm({ kind: 'exit', booking: bk });
+                    else if (hasAdminDashboardActions) openGuardInspectionModal(bk);
+                    else showToast(exitDone ? 'تم تأكيد الخروج ✓' : 'بانتظار تأكيد الحارس للخروج');
+                  },
+                  title: 'تأكيد النظافة والخروج',
+                });
+                depSteps.push({
+                  key: 'ref',
+                  label: 'إعادة',
+                  value: bk.insuranceReturned ? 'التأمين ✓' : bk.insuranceRefundRequested ? 'مطلوب' : 'التأمين',
+                  icon: RotateCcw,
+                  tone: bk.insuranceRefundRequested ? 'sand' : 'violet',
+                  done: Boolean(bk.insuranceReturned),
+                  onClick: () => openInsuranceRefundModal(bk),
+                  title: `استرداد التأمين المحول (${fmtN(bk.insuranceAmount)} ر.س)`,
+                });
+                depSteps.push({
+                  key: 'rc-ins',
+                  label: 'إيصال',
+                  value: insRecvCount > 0 ? 'التأمين ✓' : 'التأمين ✕',
+                  icon: Receipt,
+                  tone: 'violet',
+                  done: insRecvCount > 0,
+                  onClick: () => openReceiptGroup(bk, ['insurance', 'insurance_refund'], 'إيصالات التأمين (الاستلام والإعادة)'),
+                  title: 'نسخة إيصال التأمين',
+                });
+                depSteps.push({
+                  key: 'fin',
+                  label: 'إنهاء',
+                  value: bk.status === 'completed' ? 'منتهي ✓' : 'الحجز',
+                  icon: CheckCircle2,
+                  tone: 'line',
+                  done: bk.status === 'completed',
+                  onClick: () => openFinishBookingModal(bk),
+                });
+
                 return (
                   <div key={depKey} className="kt-bk">
                     <BkTop bk={bk} todayStr={todayStr} />
@@ -1407,43 +1472,8 @@ ${prop?.iban || 'SA0380000201608010998877'}
                       </Infos>
                     )}
 
-                    <Acts cols={2}>
-                      {isGuard && (
-                        <Act
-                          tone={exitDone ? 'jadeS' : 'garnet'}
-                          icon={CheckCircle2}
-                          label={exitDone ? 'تم الخروج ✓' : 'تأكيد الخروج'}
-                          title="تأكيد النظافة والخروج"
-                          onClick={() => setGuardConfirm({ kind: 'exit', booking: bk })}
-                        />
-                      )}
-                      {!isGuard && !hasAdminDashboardActions && reminderAct}
-                      {hasAdminDashboardActions && (
-                        <>
-                          <Act
-                            tone={exitDone ? 'jadeS' : 'garnet'}
-                            icon={CheckCircle2}
-                            label={exitDone ? 'تم الخروج ✓' : 'تأكيد الخروج'}
-                            title="تأكيد النظافة والخروج"
-                            onClick={() => openGuardInspectionModal(bk)}
-                          />
-                          {reminderAct}
-                        </>
-                      )}
-                      <Act
-                        tone={refundTone}
-                        icon={RotateCcw}
-                        label={refundLabel}
-                        title={`استرداد التأمين المحول (${fmtN(bk.insuranceAmount)} ر.س)`}
-                        onClick={() => openInsuranceRefundModal(bk)}
-                      />
-                      <Act
-                        tone={bk.status === 'completed' ? 'jade' : 'ink'}
-                        icon={CheckCircle2}
-                        label={bk.status === 'completed' ? 'الحجز منتهي ✓' : 'إنهاء الحجز'}
-                        onClick={() => openFinishBookingModal(bk)}
-                      />
-                    </Acts>
+                    <StageTrack bk={bk} todayStr={todayStr} stages={depStages} />
+                    <ActSteps items={depSteps} />
 
                     <Acc
                       icon={<MessageCircle size={20} strokeWidth={1.8} />}
@@ -1574,7 +1604,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
       {/* ═══ تتبع الحجز ومسار المراحل الخمس ═══ */}
       {(activeFilter === 'tracking' || activeFilter === 'all') && (
         <section className="lux-card p-4 space-y-3.5">
-          <Head title="تتبع الحجز" icon={Settings} tone="jade" count={searchFilteredTracking.length} />
+          <Head title="باقي الحجوزات" icon={Settings} tone="jade" count={otherTracking.length} />
 
           <Seg
             compact
@@ -1595,11 +1625,11 @@ ${prop?.iban || 'SA0380000201608010998877'}
             ]}
           />
 
-          {searchFilteredTracking.length === 0 ? (
+          {otherTracking.length === 0 ? (
             <EmptyBox icon={Calendar} text="لا توجد حجوزات مطابقة" />
           ) : (
             <div className="space-y-3">
-              {searchFilteredTracking.map((bk, idx) => renderTrackCard(bk, bk.id ? `trk-${bk.id}` : `trk-${idx}`))}
+              {otherTracking.map((bk, idx) => renderCompactCard(bk, bk.id ? `trk-${bk.id}` : `trk-${idx}`))}
             </div>
           )}
         </section>
@@ -2311,35 +2341,40 @@ ${prop?.iban || 'SA0380000201608010998877'}
         </Sheet>
       )}
 
-      {/* نسخة إيصال البنك (عربون / متبقي / تأمين) */}
-      {singleReceipt && (
+      {/* نسخ إيصالات البنك (دفع / تأمين) */}
+      {receiptGroup && (
         <Sheet
           wide
-          title={singleReceipt.label}
+          title={receiptGroup.title}
           icon={Receipt}
           tone="amy"
-          onClose={() => setSingleReceipt(null)}
+          onClose={() => setReceiptGroup(null)}
           footer={
-            <Acts cols={2}>
+            <Acts cols={1}>
+              <Act tone="line" icon={X} label="إغلاق" onClick={() => setReceiptGroup(null)} />
+            </Acts>
+          }
+        >
+          {receiptGroup.items.map((item) => (
+            <div key={item.id} className="space-y-2">
+              <Row title={item.label} sub={item.fileName} />
+              {item.dataUrl.startsWith('data:application/pdf') || /\.pdf(\?|#|$)/i.test(item.dataUrl) ? (
+                <iframe title={item.label} src={item.dataUrl} style={{ width: '100%', height: '50vh', border: 0 }} />
+              ) : (
+                <img
+                  src={item.dataUrl}
+                  alt={item.label}
+                  style={{ width: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: 12 }}
+                />
+              )}
               <Act
                 tone="jade"
                 icon={Download}
                 label="تحميل النسخة"
-                onClick={() => downloadReceiptFile(singleReceipt.dataUrl, singleReceipt.fileName)}
+                onClick={() => downloadReceiptFile(item.dataUrl, item.fileName)}
               />
-              <Act tone="line" icon={X} label="إغلاق" onClick={() => setSingleReceipt(null)} />
-            </Acts>
-          }
-        >
-          {singleReceipt.dataUrl.startsWith('data:application/pdf') || /\.pdf(\?|#|$)/i.test(singleReceipt.dataUrl) ? (
-            <iframe title={singleReceipt.label} src={singleReceipt.dataUrl} style={{ width: '100%', height: '60vh', border: 0 }} />
-          ) : (
-            <img
-              src={singleReceipt.dataUrl}
-              alt={singleReceipt.label}
-              style={{ width: '100%', maxHeight: '65vh', objectFit: 'contain', borderRadius: 12 }}
-            />
-          )}
+            </div>
+          ))}
         </Sheet>
       )}
     </div>
