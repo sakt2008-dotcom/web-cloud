@@ -28,7 +28,7 @@ export const C = {
 const T = ' fill="currentColor" fill-opacity=".16"';
 
 const PATHS = {
-  gem: `<path d="M7 4h10l4 5.5-9 11-9-11z"${T}/><path d="M3 9.5h18M9.5 9.5 12 4l2.5 5.5M9.5 9.5 12 20.5l2.5-11"/>`,
+  gem: '<g transform="translate(12 12.5) scale(0.27) translate(-256 -302)"><path d="M255 322 C244 306, 228 294, 214 282 C233 282, 249 294, 255 316 Z" fill="currentColor" fill-opacity=".9" stroke="none"/><path d="M257 322 C268 306, 284 294, 298 282 C279 282, 263 294, 257 316 Z" fill="currentColor" fill-opacity=".9" stroke="none"/></g>',
   bell: `<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"${T}/><path d="M12 3.5V5M10 20.5a2 2 0 0 0 4 0"/>`,
   in: `<path d="M8 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2z"${T}/><path d="M20 12h-9M14.5 8.5 11 12l3.5 3.5"/>`,
   out: `<path d="M8 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2z"${T}/><path d="M11 12h9M16.5 8.5 20 12l-3.5 3.5"/>`,
@@ -108,9 +108,10 @@ export const Gem: React.FC<{ color: string; size?: number; pulse?: boolean; clas
     className={`shrink-0 block ${pulse ? 'lux-gem-pulse' : ''} ${className}`}
     style={{ width: size, height: size }}
   >
-    <path d="M6 .6 11.4 6 6 11.4.6 6z" fill={color} />
-    <path d="M6 .6 11.4 6H.6z" fill="#fff" fillOpacity=".26" />
-    <path d="M.6 6h10.8L6 11.4z" fill="#000" fillOpacity=".12" />
+    <g transform="translate(6 6.4) scale(0.135) translate(-256 -302)">
+      <path d="M255 322 C244 306, 228 294, 214 282 C233 282, 249 294, 255 316 Z" fill={color} />
+      <path d="M257 322 C268 306, 284 294, 298 282 C279 282, 263 294, 257 316 Z" fill={color} />
+    </g>
   </svg>
 );
 
@@ -187,8 +188,32 @@ export const BrandMark: React.FC<{ size?: number }> = ({ size = 44 }) => (
     style={{ width: size, height: size, borderRadius: Math.round(size * 0.3) }}
     aria-hidden="true"
   >
-    <LuxIcon name="gem" size={Math.round(size * 0.56)} />
+    <LeavesMark width={Math.round(size * 0.66)} />
   </span>
+);
+
+/** شعار الورقتين الذهبيتين (نفس شعار أيقونة التطبيق) */
+export const LeavesMark: React.FC<{ width?: number; className?: string }> = ({ width = 32, className = '' }) => (
+  <svg
+    width={width}
+    height={Math.round(width * 0.54)}
+    viewBox="208 278 98 48"
+    aria-hidden="true"
+    className={`shrink-0 block ${className}`}
+    style={{ width, height: Math.round(width * 0.54) }}
+  >
+    <defs>
+      <linearGradient id="lx-leaf-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#fff2bf" />
+        <stop offset="50%" stopColor="#dfb256" />
+        <stop offset="100%" stopColor="#9e6d1c" />
+      </linearGradient>
+    </defs>
+    <path d="M255 322 C244 306, 228 294, 214 282 C233 282, 249 294, 255 316 Z" fill="url(#lx-leaf-gold)" />
+    <path d="M257 322 C268 306, 284 294, 298 282 C279 282, 263 294, 257 316 Z" fill="url(#lx-leaf-gold)" />
+    <path d="M254 319 C244 306, 232 294, 219 285" fill="none" stroke="#5c3d0c" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M258 319 C268 306, 280 294, 293 285" fill="none" stroke="#5c3d0c" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
 );
 
 /* ─────────────────────────── بلاطة أيقونة (خلفية ناعمة + خط رفيع) ─────────────────────────── */
@@ -300,9 +325,12 @@ export const DiamondGauge: React.FC<{ value: number; main: string; sub: string; 
             <stop offset="1" stopColor="#A98443" />
           </linearGradient>
         </defs>
-        <path d="M70 10 130 70 70 130 10 70z" stroke="rgba(255,255,255,.14)" strokeWidth="6" strokeLinejoin="round" pathLength={100} />
-        <path
-          d="M70 10 130 70 70 130 10 70z"
+        <circle cx="70" cy="70" r="60" stroke="rgba(255,255,255,.14)" strokeWidth="6" pathLength={100} />
+        <circle
+          cx="70"
+          cy="70"
+          r="60"
+          transform="rotate(-90 70 70)"
           stroke={`url(#champ-${id})`}
           strokeWidth="6"
           strokeLinejoin="round"
@@ -310,7 +338,7 @@ export const DiamondGauge: React.FC<{ value: number; main: string; sub: string; 
           pathLength={100}
           strokeDasharray={`${Math.max(v * 100, v > 0 ? 1 : 0)} 100`}
         />
-        <path d="M70 30 110 70 70 110 30 70z" stroke="rgba(255,255,255,.10)" strokeWidth="1" />
+        <circle cx="70" cy="70" r="40" stroke="rgba(255,255,255,.10)" strokeWidth="1" />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
         <span className="text-[30px] font-bold leading-none" style={{ color: C.snow }} dir="ltr">

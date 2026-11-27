@@ -378,6 +378,16 @@ export const DashboardTab: React.FC = () => {
     });
   }, [roleFilteredBookings, trackingSubFilter, todayStr]);
 
+  const [singleReceipt, setSingleReceipt] = useState<ReturnType<typeof getBookingReceiptsList>[number] | null>(null);
+  const openReceiptOf = (bk: Booking, kind: 'deposit' | 'remaining' | 'insurance', label: string) => {
+    const item = getBookingReceiptsList(bk).find((r) => r.kind === kind);
+    if (!item) {
+      showToast(`لا يوجد ${label} مرفوع لهذا الحجز بعد`);
+      return;
+    }
+    setSingleReceipt(item);
+  };
+
   const matchesSearch = (b: Booking) => {
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase().trim();
@@ -1072,6 +1082,138 @@ ${prop?.iban || 'SA0380000201608010998877'}
     }
   };
 
+  const renderTrackCard = (bk: Booking, trackKey: string) => {
+    const stages = getBookingStages(bk);
+    const isExpanded = Boolean(expandedBookingIds[trackKey]);
+    const propGuard = guardsList?.find((g) => g.assignedPropertyId === bk.propertyId) || guard;
+    const isPaidInFull = bk.remainingAmount <= 0;
+    const isInsurancePaid = stages.isInsurancePaid;
+    const refundLabel = bk.insuranceReturned
+      ? 'تم الاسترداد ✓'
+      : bk.insuranceRefundRequested
+      ? 'طلب الاسترداد'
+      : 'استرداد المحول';
+    const receiptKinds = {
+      deposit: getBookingReceiptsList(bk).some((r) => r.kind === 'deposit'),
+      remaining: getBookingReceiptsList(bk).some((r) => r.kind === 'remaining'),
+      insurance: getBookingReceiptsList(bk).some((r) => r.kind === 'insurance'),
+    };
+    const refundTone = bk.insuranceReturned ? 'jadeS' : bk.insuranceRefundRequested ? 'sand' : 'soft';
+
+    return (
+      <div key={trackKey} className="kt-bk">
+        <BkTop bk={bk} todayStr={todayStr} />
+        <StageTrack bk={bk} todayStr={todayStr} stages={stages} />
+
+        <ActSteps
+          items={[
+            { key: 'rem', label: 'تذكير', value: 'الحجز', icon: MessageCircle, tone: 'violet', onClick: () => openWelcomeReminderModal(bk), title: 'تذكير الحجز' },
+            {
+              key: 'bal',
+              label: 'المتبقي',
+              value: isPaidInFull ? 'مسدد ✓' : fmtN(bk.remainingAmount),
+              icon: DollarSign,
+              tone: 'sand',
+              done: isPaidInFull,
+              onClick: () => openRemainingPaymentModal(bk),
+            },
+            {
+              key: 'ins',
+              label: 'التأمين',
+              value: isInsurancePaid ? 'مستلم ✓' : fmtN(bk.insuranceAmount),
+              icon: ShieldCheck,
+              tone: 'line',
+              done: isInsurancePaid,
+              onClick: () => openInsuranceActionModal(bk),
+            },
+            {
+              key: 'ref',
+              label: 'استرداد',
+              value: bk.insuranceReturned ? 'تم ✓' : bk.insuranceRefundRequested ? 'مطلوب' : 'المحول',
+              icon: RotateCcw,
+              tone: bk.insuranceRefundRequested ? 'sand' : 'violet',
+              done: !!bk.insuranceReturned,
+              onClick: () => openInsuranceRefundModal(bk),
+              title: refundLabel,
+            },
+            {
+              key: 'fin',
+              label: 'إنهاء',
+              value: bk.status === 'completed' ? 'منتهي ✓' : 'الحجز',
+              icon: CheckCircle2,
+              tone: 'line',
+              done: bk.status === 'completed',
+              onClick: () => openFinishBookingModal(bk),
+            },
+          ]}
+        />
+        <ActSteps
+          items={[
+            {
+              key: 'det',
+              label: 'تفاصيل',
+              value: 'الحجز',
+              icon: Eye,
+              tone: 'ink',
+              onClick: () => {
+                setDetailsTitle('تفاصيل الحجز الكاملة');
+                setSelectedBookingForDetails(bk);
+              },
+            },
+            {
+              key: 'rc-dep',
+              label: 'إيصال',
+              value: receiptKinds.deposit ? 'العربون' : 'العربون ✕',
+              icon: Wallet,
+              tone: 'sand',
+              done: receiptKinds.deposit,
+              onClick: () => openReceiptOf(bk, 'deposit', 'إيصال العربون'),
+              title: 'نسخة ايصال البنك للعربون',
+            },
+            {
+              key: 'rc-rem',
+              label: 'إيصال',
+              value: receiptKinds.remaining ? 'المتبقي' : 'المتبقي ✕',
+              icon: Receipt,
+              tone: 'jade',
+              done: receiptKinds.remaining,
+              onClick: () => openReceiptOf(bk, 'remaining', 'إيصال المتبقي'),
+              title: 'نسخة ايصال البنك للمتبقي',
+            },
+            {
+              key: 'rc-ins',
+              label: 'إيصال',
+              value: receiptKinds.insurance ? 'التأمين' : 'التأمين ✕',
+              icon: ShieldCheck,
+              tone: 'violet',
+              done: receiptKinds.insurance,
+              onClick: () => openReceiptOf(bk, 'insurance', 'إيصال التأمين'),
+              title: 'نسخة ايصال البنك للتأمين',
+            },
+          ]}
+        />
+
+        <Acc
+          icon={<Phone size={20} strokeWidth={1.8} />}
+          title="التواصل السريع"
+          open={isExpanded}
+          onToggle={() => toggleBookingExpanded(trackKey)}
+        >
+          <ContactList
+            customerName={bk.customerName}
+            customerTel={bk.customerCallUrl || buildCustomerCallUrl(bk.customerPhone)}
+            customerWa={bk.customerWhatsappUrl || getWhatsAppCustomerUrl(bk.customerPhone, bk.customerName, bk.propertyName)}
+            guardName={propGuard?.name || 'أبو راشد'}
+            guardTel={`tel:${propGuard?.phone || '0598881234'}`}
+            guardWa={getWhatsAppGuardUrl(bk)}
+            adminTel="tel:0500000001"
+            adminWa={getWhatsAppAdminUrl(bk)}
+          />
+        </Acc>
+      </div>
+    );
+  };
+
   return (
     <div className="pb-24 sm:pb-28 w-full max-w-[1920px] mx-auto px-2.5 sm:px-6 lg:px-8 pt-3 sm:pt-4 space-y-3.5 sm:space-y-5">
       {/* إشعار عائم موحّد */}
@@ -1169,7 +1311,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
       <SearchBox value={searchTerm} onChange={setSearchTerm} placeholder="ابحث بالاسم أو الجوال أو رقم الحجز" />
 
       {/* ═══ حركات دخول اليوم ═══ */}
-      {(activeFilter === 'arrivals' || activeFilter === 'all') && (
+      {activeFilter === 'arrivals' && (
         <section className="lux-card p-4 space-y-3.5">
           <Head
             title="دخول اليوم"
@@ -1183,92 +1325,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
             <EmptyBox icon={Calendar} text="لا توجد حركات دخول لليوم" />
           ) : (
             <div className="space-y-3">
-              {searchFilteredArrivals.map((bk, idx) => {
-                const arrKey = bk.id ? `arr-${bk.id}` : `arr-${idx}`;
-                const isExpanded = Boolean(expandedBookingIds[arrKey]);
-                const propGuard = guardsList?.find((g) => g.assignedPropertyId === bk.propertyId) || guard;
-                const isHamran = bk.propertyId === 'hamran' || bk.propertyName.includes('حمران');
-                const isInsurancePaid = Boolean(bk.insuranceReceivedCash || bk.insurancePaymentMethod);
-                const isPaidInFull = bk.remainingAmount <= 0;
-                const arrived = Boolean(bk.guestArrived || bk.arrivalConfirmedAt);
-                const insLabel = isInsurancePaid
-                  ? bk.cashInsuranceConfirmedByGuard || bk.insurancePaymentMethod === 'cash' || bk.insuranceReceivedCash
-                    ? 'تأمين كاش ✓'
-                    : 'تأمين بنكي ✓'
-                  : `التأمين ${fmtN(bk.insuranceAmount)}`;
-                const hasBreakfast = !(bk.withoutBreakfast || (!bk.breakfastOption && !bk.breakfastPrice));
-                const hasCoord = Boolean(bk.coordinatorName || bk.coordinatorService);
-
-                return (
-                  <div key={`${bk.id || 'arr'}-${idx}`} className="kt-bk">
-                    <BkTop bk={bk} todayStr={todayStr} />
-
-                    {isHamran && (
-                      <ServicesStrip
-                        hasBreakfast={hasBreakfast}
-                        breakfastText={`${bk.breakfastOption || 'فطور شامي فاخر'}${bk.breakfastPrice ? ` · ${fmtN(bk.breakfastPrice)} ر.س` : ''}`}
-                        hasCoordinator={hasCoord}
-                        coordinatorText={`${bk.coordinatorName || 'المنسقة'}${bk.coordinatorService ? ` · ${bk.coordinatorService}` : ''}`}
-                      />
-                    )}
-
-                    <Acts cols={2}>
-                      <Act tone="soft" icon={MessageCircle} label="تذكير الحجز" onClick={() => openWelcomeReminderModal(bk)} />
-                      <Act
-                        tone={isPaidInFull ? 'jadeS' : 'sand'}
-                        icon={DollarSign}
-                        label={isPaidInFull ? 'المتبقي مسدد ✓' : `المتبقي ${fmtN(bk.remainingAmount)}`}
-                        onClick={() => openRemainingPaymentModal(bk)}
-                      />
-                      <Act
-                        tone={isInsurancePaid ? 'jadeS' : 'line'}
-                        icon={ShieldCheck}
-                        label={insLabel}
-                        onClick={() => openInsuranceActionModal(bk)}
-                      />
-                      <Act
-                        tone={arrived ? 'jade' : 'sand'}
-                        icon={arrived ? CheckCircle2 : Clock}
-                        label={arrived ? `وصل ${bk.guestArrivedAt || bk.arrivalConfirmedAt || ''}`.trim() : 'لم يصل بعد'}
-                        onClick={() => handleToggleArrival(bk)}
-                      />
-                    </Acts>
-
-                    <Acc
-                      icon={<Phone size={20} strokeWidth={1.8} />}
-                      title="التواصل والتفاصيل"
-                      open={isExpanded}
-                      onToggle={() => toggleBookingExpanded(arrKey)}
-                    >
-                      <ContactList
-                        customerName={bk.customerName}
-                        customerTel={`tel:${bk.customerPhone}`}
-                        customerWa={getWhatsAppCustomerUrl(bk.customerPhone, bk.customerName, bk.propertyName)}
-                        guardName={propGuard?.name || 'أبو راشد'}
-                        guardTel={`tel:${propGuard?.phone || '0598881234'}`}
-                        guardWa={getWhatsAppGuardUrl(bk)}
-                        adminTel="tel:0500000001"
-                        adminWa={getWhatsAppAdminUrl(bk)}
-                      />
-                      <Act
-                        tone="ink"
-                        icon={Eye}
-                        label="عرض تفاصيل الحجز"
-                        onClick={() => {
-                          setDetailsTitle('تفاصيل الحجز الكاملة');
-                          setSelectedBookingForDetails(bk);
-                        }}
-                      />
-                      <Infos cols={2}>
-                        <Info label="الإجمالي" value={`${fmtN(bk.totalPrice)} ر.س`} />
-                        <Info label="العربون" value={`${fmtN(bk.depositPaid)} ر.س`} />
-                        <Info hi={bk.remainingAmount <= 0} label="المتبقي" value={bk.remainingAmount > 0 ? `${fmtN(bk.remainingAmount)} ر.س` : 'مسدد ✓'} />
-                        <Info label="التأمين" value={`${fmtN(bk.insuranceAmount)} ر.س`} />
-                      </Infos>
-                    </Acc>
-                  </div>
-                );
-              })}
+              {searchFilteredArrivals.map((bk, idx) => renderTrackCard(bk, bk.id ? `arr-${bk.id}` : `arr-${idx}`))}
             </div>
           )}
         </section>
@@ -1542,99 +1599,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
             <EmptyBox icon={Calendar} text="لا توجد حجوزات مطابقة" />
           ) : (
             <div className="space-y-3">
-              {searchFilteredTracking.map((bk, idx) => {
-                const stages = getBookingStages(bk);
-                const trackKey = bk.id ? `trk-${bk.id}` : `trk-${idx}`;
-                const isExpanded = Boolean(expandedBookingIds[trackKey]);
-                const propGuard = guardsList?.find((g) => g.assignedPropertyId === bk.propertyId) || guard;
-                const isPaidInFull = bk.remainingAmount <= 0;
-                const isInsurancePaid = stages.isInsurancePaid;
-                const refundLabel = bk.insuranceReturned
-                  ? 'تم الاسترداد ✓'
-                  : bk.insuranceRefundRequested
-                  ? 'طلب الاسترداد'
-                  : 'استرداد المحول';
-                const refundTone = bk.insuranceReturned ? 'jadeS' : bk.insuranceRefundRequested ? 'sand' : 'soft';
-
-                return (
-                  <div key={trackKey} className="kt-bk">
-                    <BkTop bk={bk} todayStr={todayStr} />
-                    <StageTrack bk={bk} todayStr={todayStr} stages={stages} />
-
-                    <ActSteps
-                      items={[
-                        { key: 'rem', label: 'تذكير', value: 'الحجز', icon: MessageCircle, tone: 'violet', onClick: () => openWelcomeReminderModal(bk), title: 'تذكير الحجز' },
-                        {
-                          key: 'bal',
-                          label: 'المتبقي',
-                          value: isPaidInFull ? 'مسدد ✓' : fmtN(bk.remainingAmount),
-                          icon: DollarSign,
-                          tone: 'sand',
-                          done: isPaidInFull,
-                          onClick: () => openRemainingPaymentModal(bk),
-                        },
-                        {
-                          key: 'ins',
-                          label: 'التأمين',
-                          value: isInsurancePaid ? 'مستلم ✓' : fmtN(bk.insuranceAmount),
-                          icon: ShieldCheck,
-                          tone: 'line',
-                          done: isInsurancePaid,
-                          onClick: () => openInsuranceActionModal(bk),
-                        },
-                        {
-                          key: 'ref',
-                          label: 'استرداد',
-                          value: bk.insuranceReturned ? 'تم ✓' : bk.insuranceRefundRequested ? 'مطلوب' : 'المحول',
-                          icon: RotateCcw,
-                          tone: bk.insuranceRefundRequested ? 'sand' : 'violet',
-                          done: !!bk.insuranceReturned,
-                          onClick: () => openInsuranceRefundModal(bk),
-                          title: refundLabel,
-                        },
-                        {
-                          key: 'fin',
-                          label: 'إنهاء',
-                          value: bk.status === 'completed' ? 'منتهي ✓' : 'الحجز',
-                          icon: CheckCircle2,
-                          tone: 'line',
-                          done: bk.status === 'completed',
-                          onClick: () => openFinishBookingModal(bk),
-                        },
-                        {
-                          key: 'det',
-                          label: 'تفاصيل',
-                          value: 'الحجز',
-                          icon: Eye,
-                          tone: 'ink',
-                          onClick: () => {
-                            setDetailsTitle('تفاصيل الحجز الكاملة');
-                            setSelectedBookingForDetails(bk);
-                          },
-                        },
-                      ]}
-                    />
-
-                    <Acc
-                      icon={<Phone size={20} strokeWidth={1.8} />}
-                      title="التواصل السريع"
-                      open={isExpanded}
-                      onToggle={() => toggleBookingExpanded(trackKey)}
-                    >
-                      <ContactList
-                        customerName={bk.customerName}
-                        customerTel={bk.customerCallUrl || buildCustomerCallUrl(bk.customerPhone)}
-                        customerWa={bk.customerWhatsappUrl || getWhatsAppCustomerUrl(bk.customerPhone, bk.customerName, bk.propertyName)}
-                        guardName={propGuard?.name || 'أبو راشد'}
-                        guardTel={`tel:${propGuard?.phone || '0598881234'}`}
-                        guardWa={getWhatsAppGuardUrl(bk)}
-                        adminTel="tel:0500000001"
-                        adminWa={getWhatsAppAdminUrl(bk)}
-                      />
-                    </Acc>
-                  </div>
-                );
-              })}
+              {searchFilteredTracking.map((bk, idx) => renderTrackCard(bk, bk.id ? `trk-${bk.id}` : `trk-${idx}`))}
             </div>
           )}
         </section>
@@ -2343,6 +2308,38 @@ ${prop?.iban || 'SA0380000201608010998877'}
             onChange={setFinishNotes}
             placeholder="مثال: خرج العميل وسُلّم التأمين كاملاً"
           />
+        </Sheet>
+      )}
+
+      {/* نسخة إيصال البنك (عربون / متبقي / تأمين) */}
+      {singleReceipt && (
+        <Sheet
+          wide
+          title={singleReceipt.label}
+          icon={Receipt}
+          tone="amy"
+          onClose={() => setSingleReceipt(null)}
+          footer={
+            <Acts cols={2}>
+              <Act
+                tone="jade"
+                icon={Download}
+                label="تحميل النسخة"
+                onClick={() => downloadReceiptFile(singleReceipt.dataUrl, singleReceipt.fileName)}
+              />
+              <Act tone="line" icon={X} label="إغلاق" onClick={() => setSingleReceipt(null)} />
+            </Acts>
+          }
+        >
+          {singleReceipt.dataUrl.startsWith('data:application/pdf') || /\.pdf(\?|#|$)/i.test(singleReceipt.dataUrl) ? (
+            <iframe title={singleReceipt.label} src={singleReceipt.dataUrl} style={{ width: '100%', height: '60vh', border: 0 }} />
+          ) : (
+            <img
+              src={singleReceipt.dataUrl}
+              alt={singleReceipt.label}
+              style={{ width: '100%', maxHeight: '65vh', objectFit: 'contain', borderRadius: 12 }}
+            />
+          )}
         </Sheet>
       )}
     </div>

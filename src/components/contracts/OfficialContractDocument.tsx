@@ -61,7 +61,7 @@ const Diamond: React.FC<{ size?: number; color?: string }> = ({ size = 8, color 
       width: size,
       height: size,
       backgroundColor: color,
-      transform: 'rotate(45deg)',
+      borderRadius: '50%',
       flexShrink: 0,
     }}
   />
