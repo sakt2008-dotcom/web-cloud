@@ -405,8 +405,10 @@ export const MoreTab: React.FC<MoreTabProps> = ({ onOpenRoleSwitcher, onOpenGemi
       {isMarketerView ? (
         <section className="lux-card p-4 space-y-3">
           <Head title="أموري المالية" icon={DollarSign} tone="jade" />
-          <Row icon={CreditCard} tone="sand" title="عمولاتي وطلبات الصرف" sub="طلب صرف وسجل طلباتي" onClick={() => openFinancialHub('payouts')} end={chev} />
-          <Row icon={BarChart3} tone="jade" title="كشف عمولاتي" sub="المستحقة والمصروفة" onClick={() => setFinancialsModalOpen(true)} end={chev} />
+          <Row icon={CreditCard} tone="sand" title={currentMarketer?.isSupervisor ? 'مستحقاتي وطلب الصرف' : 'عمولاتي وطلبات الصرف'} sub={currentMarketer?.isSupervisor ? 'النسبة ورسوم المشرف والرسوم العادية' : 'طلب صرف وسجل طلباتي'} onClick={() => openFinancialHub('payouts')} end={chev} />
+          {!currentMarketer?.isSupervisor && (
+            <Row icon={BarChart3} tone="jade" title="كشف عمولاتي" sub="المستحقة والمصروفة" onClick={() => setFinancialsModalOpen(true)} end={chev} />
+          )}
         </section>
       ) : (
         (!isGuard || hasMoreFullAccess) && (

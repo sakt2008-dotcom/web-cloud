@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Wallet, Send, AlertCircle, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { Wallet, Send, AlertCircle, CheckCircle2, Clock, XCircle, Percent, ShieldCheck, Receipt } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Head, Infos, Info, Act, Field, Row, Tag } from '../ui/kit';
 import { fmtN, localTodayStr } from '../../lib/format';
-import { sumSupervisorPayout, isBookingCheckedOut } from '../../lib/financials';
+import { sumSupervisorPayout, getSupervisorPayoutParts, isBookingCheckedOut } from '../../lib/financials';
 
 /** حساب المشرف: الرسوم الإدارية + رسوم المشرف + النسبة المئوية = الإجمالي، وطلب الصرف لفترة محددة */
 export const SupervisorPayoutPanel: React.FC = () => {
@@ -28,6 +28,19 @@ export const SupervisorPayoutPanel: React.FC = () => {
     [getEligibleCommissionBookings, currentMarketerId, fromDate, toDate]
   );
   const parts = useMemo(() => sumSupervisorPayout(eligible, properties, specialAdminFeeBoxes), [eligible, properties, specialAdminFeeBoxes]);
+
+  const counts = useMemo(() => {
+    let percent = 0;
+    let supervisorFee = 0;
+    let adminFee = 0;
+    eligible.forEach((b) => {
+      const p = getSupervisorPayoutParts(b, properties, specialAdminFeeBoxes);
+      if (p.percent > 0) percent += 1;
+      if (p.supervisorFee > 0) supervisorFee += 1;
+      if (p.adminFee > 0) adminFee += 1;
+    });
+    return { percent, supervisorFee, adminFee };
+  }, [eligible, properties, specialAdminFeeBoxes]);
 
   // حجوزات في الفترة لم يخرج عميلها بعد (لا تدخل في المبلغ مؤقتاً)
   const notOutCount = useMemo(
@@ -66,7 +79,7 @@ export const SupervisorPayoutPanel: React.FC = () => {
   return (
     <section className="lux-card p-4 space-y-3.5">
       <Head title="طلب صرف المستحقات" icon={Wallet} tone="jade" />
-      <p className="kt-note">الإجمالي = الرسوم الإدارية + رسوم المشرف + النسبة. تُحتسب بعد خروج العميل فقط.</p>
+      <p className="kt-note">المجموع = النسبة المئوية + رسوم المشرف + الرسوم العادية. تُحتسب بعد خروج العميل فقط.</p>
 
       <div className="kt-fields">
         <Field label="من تاريخ">
@@ -77,14 +90,33 @@ export const SupervisorPayoutPanel: React.FC = () => {
         </Field>
       </div>
 
+      <div className="space-y-2">
+        <Row
+          icon={Percent}
+          tone="amy"
+          title="النسبة المئوية"
+          sub={`من الحجوزات التي قمت بها · ${fmtN(counts.percent)} حجز`}
+          end={<Tag tone="amy">{money(parts.percent)}</Tag>}
+        />
+        <Row
+          icon={ShieldCheck}
+          tone="sand"
+          title="رسوم المشرف"
+          sub={`من حجوزاتك في صفحة المشرف · ${fmtN(counts.supervisorFee)} حجز`}
+          end={<Tag tone="sand">{money(parts.supervisorFee)}</Tag>}
+        />
+        <Row
+          icon={Receipt}
+          tone="jade"
+          title="الرسوم العادية"
+          sub={`من حجوزاتك في صفحة الحجوزات · ${fmtN(counts.adminFee)} حجز`}
+          end={<Tag tone="jade">{money(parts.adminFee)}</Tag>}
+        />
+      </div>
       <Infos cols={2}>
-        <Info label="الرسوم الإدارية" value={money(parts.adminFee)} />
-        <Info label="رسوم المشرف" value={money(parts.supervisorFee)} />
-        <Info label="النسبة المئوية" value={money(parts.percent)} />
-        <Info label="الحجوزات" value={fmtN(eligible.length)} />
-        <Info hi wide label="الإجمالي المستحق" value={money(parts.total)} />
+        <Info label="عدد الحجوزات" value={fmtN(eligible.length)} />
+        <Info hi label="المجموع المستحق" value={money(parts.total)} />
       </Infos>
-      <p className="kt-note">الرسوم الإدارية من حجوزاتك في صفحة الحجوزات · رسوم المشرف والنسبة من حجوزاتك في صفحة المشرف.</p>
       {notOutCount > 0 && <p className="kt-note">{fmtN(notOutCount)} حجز لم يخرج عميله بعد — مستبعد مؤقتاً.</p>}
 
       {overlap && (
