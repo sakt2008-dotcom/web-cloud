@@ -110,6 +110,8 @@ export const MoreTab: React.FC<MoreTabProps> = ({ onOpenRoleSwitcher, onOpenGemi
   const { apkInfo } = usePWAInstall();
 
   const hasMoreFullAccess = isAdmin || canViewMore;
+  /** المسوّق العادي: يرى ملفه وأموره المالية فقط */
+  const isMarketerView = !isAdmin && !isGuard && !isCoordinator && !hasMoreFullAccess && Boolean(currentMarketer);
   const selfGuard = guard;
   const {
     buildId: pwaBuildId,
@@ -241,6 +243,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({ onOpenRoleSwitcher, onOpenGemi
     return (
       <FinancialHubView
         initialTab={financialHubInitialTab}
+        marketerView={isMarketerView}
         onBack={() => setFinancialHubOpen(false)}
       />
     );
@@ -383,18 +386,41 @@ export const MoreTab: React.FC<MoreTabProps> = ({ onOpenRoleSwitcher, onOpenGemi
         />
       </section>
 
+      {/* ملف المسوق (يظهر أولًا للمسوق) */}
+      {isMarketerView && targetMarketer && (
+        <section className="lux-card p-4 space-y-3.5">
+          <Row icon={UserCheck} tone="amy" title="ملفي وعمولاتي" sub={`كود المسوق: ${targetMarketer.code} · عمولة 5%`} />
+          <Acts cols={2}>
+            <Act tone="soft" icon={FileText} label="البيانات والعقد" title="عرض البيانات والعقد" onClick={() => setProfileModalOpen(true)} />
+            <Act tone="ink" icon={Edit} label="تعديل البيانات" onClick={openEditModal} />
+          </Acts>
+          <Stats cols={2} compact>
+            <Stat label="مبيعات الحجوزات" value={fmtN(totalSales)} unit="ر.س" />
+            <Stat tone="jade" label="العمولات المستحقة" value={fmtN(totalCommission)} unit="ر.س" />
+          </Stats>
+        </section>
+      )}
+
       {/* 🌟 قسم الأمور المالية */}
-      {(!isGuard || hasMoreFullAccess) && (
+      {isMarketerView ? (
+        <section className="lux-card p-4 space-y-3">
+          <Head title="أموري المالية" icon={DollarSign} tone="jade" />
+          <Row icon={CreditCard} tone="sand" title="عمولاتي وطلبات الصرف" sub="طلب صرف وسجل طلباتي" onClick={() => openFinancialHub('payouts')} end={chev} />
+          <Row icon={BarChart3} tone="jade" title="كشف عمولاتي" sub="المستحقة والمصروفة" onClick={() => setFinancialsModalOpen(true)} end={chev} />
+        </section>
+      ) : (
+        (!isGuard || hasMoreFullAccess) && (
         <section className="lux-card p-4 space-y-3">
           <Head title="الأمور المالية" icon={DollarSign} tone="jade" action={<Tag tone="jade">جديد</Tag>} />
           <Row icon={TrendingUp} tone="jade" title="صافي الأرباح والإيجار" onClick={() => openFinancialHub('profits')} end={chev} />
           <Row icon={CreditCard} tone="sand" title="طلبات الصرف" sub="للعمولات" onClick={() => openFinancialHub('payouts')} end={chev} />
           <Row icon={BarChart3} tone="amy" title="التحليل البياني" sub="بين الاستراحات" onClick={() => openFinancialHub('analytics')} end={chev} />
         </section>
+        )
       )}
 
       {/* سجل الإيصالات البنكية */}
-      {!isGuard && (
+      {!isGuard && !isMarketerView && (
         <section className="lux-card p-4">
           <Row
             icon={Receipt}
@@ -743,7 +769,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({ onOpenRoleSwitcher, onOpenGemi
       )}
 
       {/* لغير الإدارة: ملف المسوق وعمولاته */}
-      {!isAdmin && !isGuard && targetMarketer && (
+      {!isMarketerView && !isAdmin && !isGuard && targetMarketer && (
         <section className="lux-card p-4 space-y-3.5">
           <Row icon={UserCheck} tone="amy" title="ملفي وعمولاتي" sub={`كود المسوق: ${targetMarketer.code} · عمولة 5%`} />
           <Acts cols={2}>
