@@ -1,0 +1,347 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Security Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailKey(emailKey) {
+      return emailKey is string &&
+        emailKey.size() >= 3 &&
+        emailKey.size() <= 160 &&
+        emailKey.matches('^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedEmail() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email is string;
+    }
+
+    function authEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isOwnerEmail() {
+      return isVerifiedEmail() && authEmail() == 'sakt2008@gmail.com';
+    }
+
+    function isAdmin() {
+      return isVerifiedEmail() && (
+        isOwnerEmail() ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/authorizedUsers/$(authEmail())) &&
+          get(/databases/$(database)/documents/authorizedUsers/$(authEmail())).data.role == 'admin')
+      );
+    }
+
+    function isAuthorizedStaff() {
+      return isVerifiedEmail();
+    }
+
+    function isAuthorizedListRecord() {
+      return isVerifiedEmail();
+    }
+
+    function hasValidBoundedEmailArray(arr, maxLen) {
+      return arr is list &&
+        arr.size() <= maxLen &&
+        (arr.size() == 0 || (arr[0] is string && arr[0].size() >= 3 && arr[0].size() <= 160));
+    }
+
+    function isValidOperationalEnvelope(data, allowedStatuses) {
+      return data.keys().hasAll(['id', 'title', 'status', 'amount', 'record', 'authorUid', 'authorizedEmails', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'title', 'status', 'amount', 'record', 'authorUid', 'authorizedEmails', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() <= 200 &&
+        data.status is string && data.status.size() <= 64 && data.status in allowedStatuses &&
+        data.amount is number &&
+        data.record is map &&
+        data.authorUid is string && data.authorUid.size() >= 1 && data.authorUid.size() <= 128 &&
+        hasValidBoundedEmailArray(data.authorizedEmails, 50) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminDoc(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'role', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        isValidEmailKey(data.email) &&
+        data.role == 'admin' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAuthorizedUser(data) {
+      return data.keys().hasAll(['id', 'email', 'name', 'role', 'authorUid', 'adminEmails', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'id', 'email', 'name', 'role', 'marketerId', 'coordinatorId', 'guardId',
+          'isSupervisor', 'authorUid', 'adminEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidEmailKey(data.email) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 160 &&
+        data.role in ['admin', 'marketer', 'guard', 'coordinator'] &&
+        (!('marketerId' in data) || (data.marketerId is string && data.marketerId.size() <= 128)) &&
+        (!('coordinatorId' in data) || (data.coordinatorId is string && data.coordinatorId.size() <= 128)) &&
+        (!('guardId' in data) || (data.guardId is string && data.guardId.size() <= 128)) &&
+        (!('isSupervisor' in data) || data.isSupervisor is bool) &&
+        data.authorUid is string && data.authorUid.size() >= 1 && data.authorUid.size() <= 128 &&
+        hasValidBoundedEmailArray(data.adminEmails, 20) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // Boot connectivity probe document
+    match /test/{docId} {
+      allow get: if isSignedIn() && isValidId(docId);
+      allow list, write: if false;
+    }
+
+    // Admin UID registry (role verified against authorizedUsers or owner email)
+    match /admins/{uid} {
+      allow get: if isVerifiedEmail() && isValidId(uid) && (request.auth.uid == uid || isOwnerEmail());
+      allow list: if false;
+      allow create: if isVerifiedEmail() &&
+        isValidId(uid) &&
+        request.auth.uid == uid &&
+        isValidAdminDoc(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().email == authEmail() &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          isOwnerEmail() ||
+          (exists(/databases/$(database)/documents/authorizedUsers/$(authEmail())) &&
+            get(/databases/$(database)/documents/authorizedUsers/$(authEmail())).data.role == 'admin')
+        );
+      allow update: if isOwnerEmail() &&
+        isValidId(uid) &&
+        isValidAdminDoc(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['updatedAt']);
+      allow delete: if isOwnerEmail() && isValidId(uid) && uid != request.auth.uid;
+    }
+
+    // Authorized Google Emails Directory (strict PII isolation)
+    match /authorizedUsers/{emailKey} {
+      allow get: if isVerifiedEmail() && isValidEmailKey(emailKey) && (
+        isOwnerEmail() || isAdmin() || emailKey == authEmail()
+      );
+      allow list: if isVerifiedEmail() && (
+        isOwnerEmail() ||
+        existing().email == authEmail() ||
+        (existing().adminEmails is list &&
+          existing().adminEmails.size() <= 20 &&
+          authEmail() in existing().adminEmails)
+      );
+      allow create: if isAdmin() &&
+        isValidEmailKey(emailKey) &&
+        isValidAuthorizedUser(incoming()) &&
+        incoming().email == emailKey &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidEmailKey(emailKey) &&
+        isValidAuthorizedUser(incoming()) &&
+        incoming().email == existing().email &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'role', 'marketerId', 'coordinatorId', 'guardId', 'isSupervisor', 'adminEmails', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidEmailKey(emailKey) && emailKey != 'sakt2008@gmail.com';
+    }
+
+    // Bookings, Invoices & Deposit Receipts
+    match /bookings/{bookingId} {
+      allow get: if isAuthorizedStaff() && isValidId(bookingId);
+      allow list: if isAuthorizedListRecord();
+      allow create: if isAuthorizedStaff() &&
+        isValidId(bookingId) &&
+        isValidOperationalEnvelope(incoming(), ['pending', 'waiting_deposit', 'pending_payment', 'confirmed', 'completed', 'cancelled']) &&
+        incoming().id == bookingId &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAuthorizedStaff() &&
+        isValidId(bookingId) &&
+        isValidOperationalEnvelope(incoming(), ['pending', 'waiting_deposit', 'pending_payment', 'confirmed', 'completed', 'cancelled']) &&
+        incoming().id == existing().id &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'amount', 'record', 'authorizedEmails', 'updatedAt'])) ||
+          (existing().status != 'cancelled' && existing().status != 'completed' && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'amount', 'record', 'updatedAt']))
+        );
+      allow delete: if isAdmin() && isValidId(bookingId);
+    }
+
+    // Properties & Pricing Configuration
+    match /properties/{propertyId} {
+      allow get: if isAuthorizedStaff() && isValidId(propertyId);
+      allow list: if isAuthorizedListRecord();
+      allow create: if isAdmin() &&
+        isValidId(propertyId) &&
+        isValidOperationalEnvelope(incoming(), ['published', 'hidden']) &&
+        incoming().id == propertyId &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(propertyId) &&
+        isValidOperationalEnvelope(incoming(), ['published', 'hidden']) &&
+        incoming().id == existing().id &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'amount', 'record', 'authorizedEmails', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(propertyId);
+    }
+
+    // Special Administrative Fee Boxes
+    match /adminFeeBoxes/{boxId} {
+      allow get: if isAuthorizedStaff() && isValidId(boxId);
+      allow list: if isAuthorizedListRecord();
+      allow create: if isAdmin() &&
+        isValidId(boxId) &&
+        isValidOperationalEnvelope(incoming(), ['locked', 'open']) &&
+        incoming().id == boxId &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(boxId) &&
+        isValidOperationalEnvelope(incoming(), ['locked', 'open']) &&
+        incoming().id == existing().id &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'amount', 'record', 'authorizedEmails', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(boxId);
+    }
+
+    // Staff Members (Marketers, Coordinators, Guards)
+    match /staffMembers/{memberId} {
+      allow get: if isAuthorizedStaff() && isValidId(memberId);
+      allow list: if isAuthorizedListRecord();
+      allow create: if isAuthorizedStaff() &&
+        isValidId(memberId) &&
+        isValidOperationalEnvelope(incoming(), ['marketer', 'coordinator', 'guard']) &&
+        incoming().id == memberId &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAuthorizedStaff() &&
+        isValidId(memberId) &&
+        isValidOperationalEnvelope(incoming(), ['marketer', 'coordinator', 'guard']) &&
+        incoming().id == existing().id &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'amount', 'record', 'authorizedEmails', 'updatedAt'])) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'amount', 'record', 'updatedAt'])
+        );
+      allow delete: if isAdmin() && isValidId(memberId);
+    }
+
+    // Daily Guard Tasks & Weekly Task Templates
+    match /guardTasks/{taskId} {
+      allow get: if isAuthorizedStaff() && isValidId(taskId);
+      allow list: if isAuthorizedListRecord();
+      allow create: if isAuthorizedStaff() &&
+        isValidId(taskId) &&
+        isValidOperationalEnvelope(incoming(), ['pending', 'in_progress', 'completed', 'verified', 'template']) &&
+        incoming().id == taskId &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAuthorizedStaff() &&
+        isValidId(taskId) &&
+        isValidOperationalEnvelope(incoming(), ['pending', 'in_progress', 'completed', 'verified', 'template']) &&
+        incoming().id == existing().id &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'amount', 'record', 'authorizedEmails', 'updatedAt'])) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'record', 'updatedAt'])
+        );
+      allow delete: if isAdmin() && isValidId(taskId);
+    }
+
+    // Commission Payout Requests
+    match /commissionRequests/{reqId} {
+      allow get: if isAuthorizedStaff() && isValidId(reqId);
+      allow list: if isAuthorizedListRecord();
+      allow create: if isAuthorizedStaff() &&
+        isValidId(reqId) &&
+        isValidOperationalEnvelope(incoming(), ['pending', 'approved', 'transferred', 'paid', 'rejected']) &&
+        incoming().id == reqId &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(reqId) &&
+        isValidOperationalEnvelope(incoming(), ['pending', 'approved', 'transferred', 'paid', 'rejected']) &&
+        incoming().id == existing().id &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'amount', 'record', 'authorizedEmails', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(reqId);
+    }
+
+    // Shared System State (Overrides, Supervisor Rates, Broadcasts, Notifications)
+    match /systemStates/{stateId} {
+      allow get: if isAuthorizedStaff() && isValidId(stateId);
+      allow list: if isAuthorizedListRecord();
+      allow create: if isAuthorizedStaff() &&
+        isValidId(stateId) &&
+        isValidOperationalEnvelope(incoming(), ['active']) &&
+        incoming().id == stateId &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAuthorizedStaff() &&
+        isValidId(stateId) &&
+        isValidOperationalEnvelope(incoming(), ['active']) &&
+        incoming().id == existing().id &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'status', 'amount', 'record', 'authorizedEmails', 'updatedAt'])) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['record', 'updatedAt'])
+        );
+      allow delete: if isAdmin() && isValidId(stateId);
+    }
+  }
+}

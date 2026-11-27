@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="46%" r="65%">
+      <stop offset="0%" stop-color="#2e2114" />
+      <stop offset="55%" stop-color="#19120b" />
+      <stop offset="100%" stop-color="#0d0905" />
+    </radialGradient>
+
+    <linearGradient id="goldFrame" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f7df94" />
+      <stop offset="45%" stop-color="#c9973b" />
+      <stop offset="100%" stop-color="#f0ce78" />
+    </linearGradient>
+
+    <linearGradient id="goldText" x1="0%" y1="0%" x2="10%" y2="100%">
+      <stop offset="0%" stop-color="#fff4c8" />
+      <stop offset="28%" stop-color="#ecc56d" />
+      <stop offset="68%" stop-color="#c79232" />
+      <stop offset="100%" stop-color="#8b5e14" />
+    </linearGradient>
+
+    <linearGradient id="goldLeaf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff2bf" />
+      <stop offset="50%" stop-color="#dfb256" />
+      <stop offset="100%" stop-color="#9e6d1c" />
+    </linearGradient>
+
+    <linearGradient id="goldLineL" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#9c6c1c" stop-opacity="0.7" />
+      <stop offset="50%" stop-color="#ecc56d" />
+      <stop offset="100%" stop-color="#fff2bf" />
+    </linearGradient>
+
+    <linearGradient id="goldLineR" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fff2bf" />
+      <stop offset="50%" stop-color="#ecc56d" />
+      <stop offset="100%" stop-color="#9c6c1c" stop-opacity="0.7" />
+    </linearGradient>
+
+    <filter id="embossShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.75" />
+    </filter>
+  </defs>
+
+  <!-- Rich dark warm architectural background -->
+  <rect width="512" height="512" rx="48" fill="url(#bg)" />
+
+  <!-- Thin outer metallic gold square frame matching the photo -->
+  <rect
+    x="22"
+    y="22"
+    width="468"
+    height="468"
+    rx="28"
+    fill="none"
+    stroke="url(#goldFrame)"
+    stroke-width="3.5"
+  />
+
+  <!-- Center AMASA Serif Wordmark -->
+  <text
+    x="256"
+    y="264"
+    text-anchor="middle"
+    font-family="Georgia, 'Palatino Linotype', 'Book Antiqua', 'Times New Roman', serif"
+    font-weight="700"
+    font-size="96"
+    letter-spacing="4"
+    fill="url(#goldText)"
+    filter="url(#embossShadow)"
+  >AMASA</text>
+
+  <!-- Horizontal gold divider bars & twin leaves emblem -->
+  <g filter="url(#embossShadow)">
+    <!-- Left gold horizontal bar -->
+    <rect x="74" y="295" width="132" height="4.5" rx="2.25" fill="url(#goldLineL)" />
+    <!-- Right gold horizontal bar -->
+    <rect x="306" y="295" width="132" height="4.5" rx="2.25" fill="url(#goldLineR)" />
+
+    <!-- Left leaf -->
+    <path
+      d="M255 322 C244 306, 228 294, 214 282 C233 282, 249 294, 255 316 Z"
+      fill="url(#goldLeaf)"
+    />
+    <path
+      d="M254 319 C244 306, 232 294, 219 285"
+      fill="none"
+      stroke="#5c3d0c"
+      stroke-width="1.8"
+      stroke-linecap="round"
+    />
+
+    <!-- Right leaf -->
+    <path
+      d="M257 322 C268 306, 284 294, 298 282 C279 282, 263 294, 257 316 Z"
+      fill="url(#goldLeaf)"
+    />
+    <path
+      d="M258 319 C268 306, 280 294, 293 285"
+      fill="none"
+      stroke="#5c3d0c"
+      stroke-width="1.8"
+      stroke-linecap="round"
+    />
+  </g>
+</svg>

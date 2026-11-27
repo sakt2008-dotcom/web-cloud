@@ -1,0 +1,39 @@
+name: Build AMASA Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install root dependencies & build web dist
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Android APK inside apk/
+        run: |
+          cd apk
+          chmod +x build-apk.sh
+          ./build-apk.sh
+
+      - name: Upload amasa-resort.apk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: amasa-resort-apk
+          path: apk/amasa-resort.apk

@@ -1,0 +1,194 @@
+{
+  "entities": {
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Verified administrator UID mapping for role-based access control.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 160 },
+        "role": { "type": "string", "enum": ["admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt", "updatedAt"]
+    },
+    "AuthorizedUser": {
+      "title": "AuthorizedUser",
+      "description": "Authorized Google account allowed to sign in to AMASA with an assigned role.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 160 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "role": { "type": "string", "enum": ["admin", "marketer", "guard", "coordinator"] },
+        "marketerId": { "type": "string", "maxLength": 128 },
+        "coordinatorId": { "type": "string", "maxLength": 128 },
+        "guardId": { "type": "string", "maxLength": 128 },
+        "isSupervisor": { "type": "boolean" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "adminEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "name", "role", "authorUid", "adminEmails", "createdAt", "updatedAt"]
+    },
+    "BookingRecord": {
+      "title": "BookingRecord",
+      "description": "Chalet booking, invoice, deposit receipt, insurance, and admin fee record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["pending", "waiting_deposit", "pending_payment", "confirmed", "completed", "cancelled"] },
+        "amount": { "type": "number" },
+        "record": { "type": "object" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorizedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "status", "amount", "record", "authorUid", "authorizedEmails", "createdAt", "updatedAt"]
+    },
+    "PropertyRecord": {
+      "title": "PropertyRecord",
+      "description": "Chalet property definition, pricing tiers, administrative fees, and bank info.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["published", "hidden"] },
+        "amount": { "type": "number" },
+        "record": { "type": "object" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorizedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "status", "amount", "record", "authorUid", "authorizedEmails", "createdAt", "updatedAt"]
+    },
+    "AdminFeeBoxRecord": {
+      "title": "AdminFeeBoxRecord",
+      "description": "Special administrative fee configuration box per property and period.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["locked", "open"] },
+        "amount": { "type": "number" },
+        "record": { "type": "object" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorizedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "status", "amount", "record", "authorUid", "authorizedEmails", "createdAt", "updatedAt"]
+    },
+    "StaffMemberRecord": {
+      "title": "StaffMemberRecord",
+      "description": "Marketer, coordinator, or guard profile and permissions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["marketer", "coordinator", "guard"] },
+        "amount": { "type": "number" },
+        "record": { "type": "object" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorizedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "status", "amount", "record", "authorUid", "authorizedEmails", "createdAt", "updatedAt"]
+    },
+    "GuardTaskRecord": {
+      "title": "GuardTaskRecord",
+      "description": "Field guard operational task or recurring weekly task template.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "template"] },
+        "amount": { "type": "number" },
+        "record": { "type": "object" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorizedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "status", "amount", "record", "authorUid", "authorizedEmails", "createdAt", "updatedAt"]
+    },
+    "CommissionRequestRecord": {
+      "title": "CommissionRequestRecord",
+      "description": "Marketer commission payout request.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["pending", "approved", "paid", "rejected"] },
+        "amount": { "type": "number" },
+        "record": { "type": "object" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorizedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "status", "amount", "record", "authorUid", "authorizedEmails", "createdAt", "updatedAt"]
+    },
+    "SystemStateDoc": {
+      "title": "SystemStateDoc",
+      "description": "Shared operational configuration state (date overrides, supervisor rates, broadcasts, notifications).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["active"] },
+        "amount": { "type": "number" },
+        "record": { "type": "object" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorizedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "status", "amount", "record", "authorUid", "authorizedEmails", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Verified admin user identity documents."
+    },
+    "/authorizedUsers/{emailKey}": {
+      "schema": { "$ref": "#/entities/AuthorizedUser" },
+      "description": "Authorized Google accounts and their roles."
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/BookingRecord" },
+      "description": "Bookings, invoices, deposit receipts, and administrative fees."
+    },
+    "/properties/{propertyId}": {
+      "schema": { "$ref": "#/entities/PropertyRecord" },
+      "description": "Properties, seasonal prices, bank accounts, and administrative fees."
+    },
+    "/adminFeeBoxes/{boxId}": {
+      "schema": { "$ref": "#/entities/AdminFeeBoxRecord" },
+      "description": "Special administrative fee boxes."
+    },
+    "/staffMembers/{memberId}": {
+      "schema": { "$ref": "#/entities/StaffMemberRecord" },
+      "description": "Marketers, coordinators, and field guards."
+    },
+    "/guardTasks/{taskId}": {
+      "schema": { "$ref": "#/entities/GuardTaskRecord" },
+      "description": "Daily guard tasks and weekly templates."
+    },
+    "/commissionRequests/{reqId}": {
+      "schema": { "$ref": "#/entities/CommissionRequestRecord" },
+      "description": "Commission payout requests."
+    },
+    "/systemStates/{stateId}": {
+      "schema": { "$ref": "#/entities/SystemStateDoc" },
+      "description": "Calendar overrides, supervisor rates, broadcasts, and notifications."
+    }
+  }
+}
