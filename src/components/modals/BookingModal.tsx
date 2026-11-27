@@ -18,6 +18,7 @@ export const BookingModal: React.FC = () => {
     coordinators,
     coordinatorServices,
     isAdmin,
+    isRestrictedMarketer,
     currentMarketerId,
     activePermissions,
     canEditDeposit,
@@ -631,7 +632,7 @@ export const BookingModal: React.FC = () => {
         {commType === 'special' && (
           <Infos cols={2}>
             <Info hi label="العمولة" value="معفى 0%" />
-            <Info label="الرسوم الإدارية" value={`${n(specialAdminFeeTotal)} ر.س`} />
+            {!isRestrictedMarketer && <Info label="الرسوم الإدارية" value={`${n(specialAdminFeeTotal)} ر.س`} />}
           </Infos>
         )}
 

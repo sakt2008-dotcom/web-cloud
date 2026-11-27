@@ -351,6 +351,8 @@ export interface AppContextType {
   isGuard: boolean;
   isCoordinator: boolean;
   isSupervisor: boolean;
+  /** مسوّق عادي (ليس إدارة/مشرف/حارس/منسق): لا يرى الرسوم ولا أرباح العقارات */
+  isRestrictedMarketer: boolean;
   activePermissions: MarketerPermissions;
   switchUser: (role: UserRole, targetId?: string) => void;
   updateGuardProfile: (data: Partial<Guard>, guardId?: string) => void;
@@ -2607,6 +2609,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [marketers, currentMarketerId]);
 
   const isSupervisor = !isAdmin && !isGuard && !isCoordinator && !!currentMarketer?.isSupervisor;
+  const isRestrictedMarketer = !isAdmin && !isGuard && !isCoordinator && !!currentMarketer && !currentMarketer.isSupervisor;
 
   const currentCoordinator = useMemo(() => {
     return coordinators.find((c) => c.id === currentCoordinatorId) || coordinators[0] || null;
@@ -9786,6 +9789,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isGuard,
         isCoordinator,
         isSupervisor,
+        isRestrictedMarketer,
         activePermissions,
         switchUser,
         updateGuardProfile,

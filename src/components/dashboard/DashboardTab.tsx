@@ -115,6 +115,7 @@ export const DashboardTab: React.FC = () => {
     updateBookingStatus,
     isAdmin,
     isGuard,
+    isRestrictedMarketer,
     activePermissions,
     canViewDashboard,
     canViewBookings,
@@ -144,7 +145,8 @@ export const DashboardTab: React.FC = () => {
   } = useApp();
 
   const effectiveGuard = guard;
-  const hasAllBookingsAccess = isAdmin || !!activePermissions.canViewAllBookings || canViewMarketers;
+  // المسوّق العادي يرى عملاءه الذين حجز لهم فقط مهما كانت الصلاحيات
+  const hasAllBookingsAccess = !isRestrictedMarketer && (isAdmin || !!activePermissions.canViewAllBookings || canViewMarketers);
   const hasAdminDashboardActions = isAdmin || (!isGuard && canViewDashboard);
 
   const [guardConfirm, setGuardConfirm] = useState<GuardActionModalData | null>(null);
@@ -1523,12 +1525,19 @@ ${prop?.iban || 'SA0380000201608010998877'}
                           setSelectedBookingForDetails(bk);
                         }}
                       />
-                      <Infos cols={2}>
-                        <Info label="الإجمالي" value={`${fmtN(bk.totalPrice)} ر.س`} />
-                        <Info label="الرسوم" value={`${fmtN(adminFee)} ر.س`} />
-                        <Info label="الصافي" value={`${fmtN(netRevenue)} ر.س`} />
-                        <Info hi label={`العمولة ${effectivePercent}%`} value={`${fmtN(effectiveComm)} ر.س`} />
-                      </Infos>
+                      {isRestrictedMarketer ? (
+                        <Infos cols={2}>
+                          <Info label="سعر الليلة" value={`${fmtN(bk.nightlyPrice || (bk.nightsCount > 0 ? Math.round(bk.totalPrice / bk.nightsCount) : bk.totalPrice))} ر.س`} />
+                          <Info hi label={`العمولة ${effectivePercent}%`} value={`${fmtN(effectiveComm)} ر.س`} />
+                        </Infos>
+                      ) : (
+                        <Infos cols={2}>
+                          <Info label="الإجمالي" value={`${fmtN(bk.totalPrice)} ر.س`} />
+                          <Info label="الرسوم" value={`${fmtN(adminFee)} ر.س`} />
+                          <Info label="الصافي" value={`${fmtN(netRevenue)} ر.س`} />
+                          <Info hi label={`العمولة ${effectivePercent}%`} value={`${fmtN(effectiveComm)} ر.س`} />
+                        </Infos>
+                      )}
                       {hasAdminDashboardActions && (
                         <Row
                           title={isApproved7 ? 'معتمد 7% ✓' : 'نسبة العمولة 5%'}

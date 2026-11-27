@@ -53,6 +53,7 @@ export const BookingsTab: React.FC = () => {
     requestDeposit,
     confirmBookingWithReceipt,
     isAdmin,
+    isRestrictedMarketer,
     canViewCalendar,
     currentMarketerId,
     nowTimestamp,
@@ -1119,14 +1120,23 @@ ${mapUrl}
           <Info label="عدد الليالي" value={nightsCount} />
           <Info label="الإجمالي" value={`${totalPrice} ر.س`} />
         </Infos>
-        <Infos cols={3}>
-          <Info label={`العمولة ${commissionPercent}%`} value={`-${marketerCommission}`} />
-          <Info label="الرسوم" value={`-${totalAdminFee}`} />
-          <Info label="صافي المالك" value={`${propertyNetPayout}`} hi />
-        </Infos>
-        <p className="kt-note text-center">
-          الصافي = {totalPrice} − {marketerCommission} (عمولة) − {totalAdminFee} (رسوم)
-        </p>
+        {isRestrictedMarketer ? (
+          <Infos cols={2}>
+            <Info label="سعر الليلة" value={`${nightsCount > 0 ? Math.round(totalPrice / nightsCount) : totalPrice} ر.س`} />
+            <Info hi label={`العمولة ${commissionPercent}%`} value={`${marketerCommission} ر.س`} />
+          </Infos>
+        ) : (
+          <>
+            <Infos cols={3}>
+              <Info label={`العمولة ${commissionPercent}%`} value={`-${marketerCommission}`} />
+              <Info label="الرسوم" value={`-${totalAdminFee}`} />
+              <Info label="صافي المالك" value={`${propertyNetPayout}`} hi />
+            </Infos>
+            <p className="kt-note text-center">
+              الصافي = {totalPrice} − {marketerCommission} (عمولة) − {totalAdminFee} (رسوم)
+            </p>
+          </>
+        )}
       </section>
 
       {/* بانتظار العربون (مهلة 15 دقيقة) */}
