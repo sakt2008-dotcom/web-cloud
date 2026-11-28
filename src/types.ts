@@ -395,6 +395,12 @@ export interface Booking {
   insuranceRefundRequested?: boolean;
   remainingReceiptName?: string;
   remainingReceiptDataUrl?: string;
+  /** المتبقي كاش: أُرسل للحارس ولم يؤكد الاستلام بعد */
+  remainingPendingCashCollection?: boolean;
+  remainingNotifiedToGuardAt?: string;
+  /** إرسال إيصال إعادة التأمين للعميل (مرحلة الإيصال في الخروج) */
+  refundReceiptSentAt?: string;
+  refundReceiptSentBy?: string;
 }
 
 export interface StayEvent {

@@ -504,6 +504,20 @@ export interface AppContextType {
     notes?: string;
   }) => void;
   confirmAttendanceByGuard: (bookingId: string) => void;
+  /** الحارس يؤكد استلام المتبقي كاش */
+  confirmCashRemainingByGuard: (bookingId: string) => void;
+  /** الحارس يؤكد خروج النزيل (دون إنهاء الحجز) */
+  guardConfirmExit: (bookingId: string) => void;
+  /** الحارس يعيد التأمين، مع أضرار وصور اختيارية */
+  guardReturnInsurance: (params: {
+    bookingId: string;
+    result: 'full_refund' | 'deduction';
+    deductionAmount?: number;
+    damageDescription?: string;
+    damagePhotos?: { name: string; dataUrl: string }[];
+  }) => void;
+  /** إرسال إيصال إعادة التأمين للعميل */
+  sendRefundReceiptToCustomer: (params: { bookingId: string; receiptName?: string; receiptDataUrl?: string }) => void;
   confirmCashInsuranceByGuard: (params: string | {
     bookingId: string;
     receivedAmount?: number;
@@ -8155,12 +8169,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (b.id !== bookingId) return b;
           return {
             ...b,
-            depositPaid: b.depositPaid + remainingPrev,
-            remainingAmount: 0,
-            paymentCompleted: true,
-            paymentCompletedAt: timeStr,
-            paymentCompletedBy: actor,
-            arrivalPaymentMethod: 'cash',
+            remainingPendingCashCollection: true,
+            remainingNotifiedToGuardAt: timeStr,
             notes: notes ? (b.notes ? `${b.notes} | ${notes}` : notes) : b.notes,
           };
         })
@@ -8194,6 +8204,197 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       );
     },
     [bookings, isAdmin, guard.name, currentMarketer?.name, userRole, logActivity, triggerBrowserNotification]
+  );
+
+  const confirmCashRemainingByGuard = useCallback(
+    (bookingId: string) => {
+      const bk = bookings.find((b) => b.id === bookingId);
+      if (!bk) return;
+      const timeStr = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+      const remainingPrev = bk.remainingAmount;
+      const guardName = guard.name || 'الحارس';
+
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id !== bookingId
+            ? b
+            : {
+                ...b,
+                depositPaid: b.depositPaid + remainingPrev,
+                remainingAmount: 0,
+                paymentCompleted: true,
+                paymentCompletedAt: timeStr,
+                paymentCompletedBy: guardName,
+                arrivalPaymentMethod: 'cash' as const,
+                remainingPendingCashCollection: false,
+              }
+        )
+      );
+
+      setNotifications((prev) => [
+        {
+          id: `notif-remrecv-${Date.now()}`,
+          title: `💵 تأكيد استلام المتبقي كاش (${remainingPrev} ر.س) - ${bk.propertyName}`,
+          description: `أكّد الحارس (${guardName}) استلام المبلغ المتبقي (${remainingPrev} ريال) نقداً من العميل (${bk.customerName}) في تمام الساعة ${timeStr}.`,
+          timestamp: 'الآن',
+          read: false,
+          type: 'booking',
+          targetAudience: 'all',
+          targetMarketerId: bk.marketerId,
+          propertyId: bk.propertyId,
+          linkToBookingId: bk.id,
+        },
+        ...prev,
+      ]);
+
+      triggerBrowserNotification(
+        `💵 تأكيد استلام المتبقي كاش (${remainingPrev} ر.س)`,
+        `استلم الحارس (${guardName}) المتبقي نقداً من العميل (${bk.customerName}) - ${bk.propertyName}`
+      );
+
+      logActivity(guardName, 'guard', 'تأكيد استلام المتبقي كاش', `أكّد الحارس ${guardName} استلام المتبقي (${remainingPrev} ريال) كاش من العميل ${bk.customerName}.`);
+    },
+    [bookings, guard.name, logActivity, triggerBrowserNotification]
+  );
+
+  const guardConfirmExit = useCallback(
+    (bookingId: string) => {
+      const bk = bookings.find((b) => b.id === bookingId);
+      if (!bk) return;
+      const timeStr = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+      const guardName = guard.name || 'الحارس';
+
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id !== bookingId
+            ? b
+            : {
+                ...b,
+                checkedOut: true,
+                checkedOutAt: timeStr,
+                stayEvents: [
+                  ...(b.stayEvents || []).filter((e) => e.type !== 'checked_out'),
+                  { type: 'checked_out' as const, at: timeStr, date: new Date().toISOString().split('T')[0], by: guardName, byRole: 'guard' as const },
+                ],
+                cleanlinessApproved: true,
+                cleanlinessApprovedAt: timeStr,
+                cleanlinessApprovedBy: guardName,
+              }
+        )
+      );
+
+      setNotifications((prev) => [
+        {
+          id: `notif-exit-${Date.now()}`,
+          title: `🚪 تم خروج النزيل - ${bk.propertyName}`,
+          description: `أكّد الحارس (${guardName}) خروج العميل (${bk.customerName}) من ${bk.propertyName} في تمام الساعة ${timeStr}. الخطوة التالية: إعادة التأمين.`,
+          timestamp: 'الآن',
+          read: false,
+          type: 'checkout',
+          targetAudience: 'all',
+          targetMarketerId: bk.marketerId,
+          propertyId: bk.propertyId,
+          linkToBookingId: bk.id,
+        },
+        ...prev,
+      ]);
+
+      triggerBrowserNotification(`🚪 تم خروج النزيل - ${bk.propertyName}`, `أكّد الحارس خروج العميل (${bk.customerName}).`);
+      logActivity(guardName, 'guard', 'تأكيد خروج النزيل', `أكّد الحارس ${guardName} خروج العميل ${bk.customerName} من ${bk.propertyName}.`);
+    },
+    [bookings, guard.name, logActivity, triggerBrowserNotification]
+  );
+
+  const guardReturnInsurance = useCallback(
+    (params: {
+      bookingId: string;
+      result: 'full_refund' | 'deduction';
+      deductionAmount?: number;
+      damageDescription?: string;
+      damagePhotos?: { name: string; dataUrl: string }[];
+    }) => {
+      const { bookingId, result, deductionAmount = 0, damageDescription, damagePhotos } = params;
+      const bk = bookings.find((b) => b.id === bookingId);
+      if (!bk) return;
+      const timeStr = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+      const guardName = guard.name || 'الحارس';
+      const isRefund = result === 'full_refund';
+      const returned = Math.max(0, bk.insuranceAmount - (isRefund ? 0 : deductionAmount));
+
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id !== bookingId
+            ? b
+            : {
+                ...b,
+                guardInspectionResult: result,
+                insuranceReturned: true,
+                insuranceReturnedAt: timeStr,
+                insuranceDeductionAmount: isRefund ? 0 : deductionAmount,
+                damageDescription: isRefund ? undefined : damageDescription,
+                damagePhotos: isRefund ? undefined : damagePhotos,
+              }
+        )
+      );
+
+      setNotifications((prev) => [
+        {
+          id: `notif-insret-${Date.now()}`,
+          title: isRefund
+            ? `💵 تمت إعادة التأمين كاملًا (${returned} ر.س) - ${bk.propertyName}`
+            : `⚠️ إعادة التأمين مع خصم أضرار (${deductionAmount} ر.س) - ${bk.propertyName}`,
+          description: isRefund
+            ? `أعاد الحارس (${guardName}) مبلغ التأمين (${returned} ريال) للعميل (${bk.customerName}) بعد معاينة الاستراحة.`
+            : `أعاد الحارس (${guardName}) ${returned} ريال من التأمين بعد خصم ${deductionAmount} ريال للأضرار: ${damageDescription || 'تلفيات بالاستراحة'}، مع صور التوثيق.`,
+          timestamp: 'الآن',
+          read: false,
+          type: 'insurance',
+          targetAudience: 'all',
+          targetMarketerId: bk.marketerId,
+          propertyId: bk.propertyId,
+          linkToBookingId: bk.id,
+        },
+        ...prev,
+      ]);
+
+      triggerBrowserNotification(
+        isRefund ? `💵 تمت إعادة التأمين - ${bk.propertyName}` : `⚠️ إعادة التأمين مع خصم أضرار - ${bk.propertyName}`,
+        `العميل (${bk.customerName}): المبلغ المعاد ${returned} ر.س.`
+      );
+      logActivity(
+        guardName,
+        'guard',
+        isRefund ? 'إعادة التأمين للعميل' : 'إعادة التأمين مع خصم أضرار',
+        `أعاد الحارس ${guardName} ${returned} ريال من التأمين للعميل ${bk.customerName}${isRefund ? '' : ` بعد خصم ${deductionAmount} ريال`}.`
+      );
+    },
+    [bookings, guard.name, logActivity, triggerBrowserNotification]
+  );
+
+  const sendRefundReceiptToCustomer = useCallback(
+    (params: { bookingId: string; receiptName?: string; receiptDataUrl?: string }) => {
+      const { bookingId, receiptName, receiptDataUrl } = params;
+      const bk = bookings.find((b) => b.id === bookingId);
+      if (!bk) return;
+      const actor = isAdmin ? 'الإدارة' : currentMarketer?.name || 'المسوق';
+      const timeStr = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id !== bookingId
+            ? b
+            : {
+                ...b,
+                refundReceiptSentAt: timeStr,
+                refundReceiptSentBy: actor,
+                insuranceRefundReceiptName: receiptName || b.insuranceRefundReceiptName,
+                insuranceRefundReceiptUrl: receiptDataUrl || b.insuranceRefundReceiptUrl,
+              }
+        )
+      );
+      logActivity(actor, userRole, 'إرسال إيصال إعادة التأمين للعميل', `أرسل ${actor} إيصال إعادة التأمين للعميل ${bk.customerName} (حجز ${bk.bookingNumber}).`);
+    },
+    [bookings, isAdmin, currentMarketer?.name, userRole, logActivity]
   );
 
   const approveCleanlinessAndExit = useCallback(
@@ -8641,7 +8842,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notes: notes ? (bk.notes ? `${bk.notes} | إنهاء الحجز: ${notes}` : `إنهاء الحجز: ${notes}`) : bk.notes,
       };
       setBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? finishedBookingForSheet : b))
+        prev.map((b) =>
+          b.id === bookingId
+            ? {
+                ...finishedBookingForSheet,
+                adminApprovedFullBooking: b.adminApprovedFullBooking,
+                adminApprovedAt: b.adminApprovedAt,
+                adminApprovedBy: b.adminApprovedBy,
+                commissionRatePercent: b.commissionRatePercent,
+                marketerCommission: b.marketerCommission,
+                bookingType: b.bookingType,
+              }
+            : b
+        )
       );
       try {
         const sheetInfo = getSavedSpreadsheetInfo();
@@ -9916,6 +10129,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notifyGuardForCashPayment,
         guardProcessDeparture,
         confirmAttendanceByGuard,
+        confirmCashRemainingByGuard,
+        guardConfirmExit,
+        guardReturnInsurance,
+        sendRefundReceiptToCustomer,
         confirmCashInsuranceByGuard,
         notifyGuardForCashInsurance,
         uploadDigitalInsuranceReceipt,

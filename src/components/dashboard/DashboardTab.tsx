@@ -92,7 +92,7 @@ import { BookingReceiptsModal } from '../modals/BookingReceiptsModal';
 import { BankReceiptsHubModal } from '../modals/BankReceiptsHubModal';
 
 interface GuardActionModalData {
-  kind: 'arrive' | 'insrecv' | 'exit' | 'insret';
+  kind: 'arrive' | 'insrecv' | 'exit' | 'insret' | 'remrecv';
   booking: Booking;
 }
 
@@ -142,12 +142,20 @@ export const DashboardTab: React.FC = () => {
     requestInsuranceRefundViaBank,
     requestInsuranceRefundViaGuardCash,
     finishBookingAndReturnInsurance,
+    confirmCashRemainingByGuard,
+    guardConfirmExit,
+    guardReturnInsurance,
+    sendRefundReceiptToCustomer,
+    isSupervisor,
   } = useApp();
 
   const effectiveGuard = guard;
   // المسوّق العادي يرى عملاءه الذين حجز لهم فقط مهما كانت الصلاحيات
   const hasAllBookingsAccess = !isRestrictedMarketer && (isAdmin || !!activePermissions.canViewAllBookings || canViewMarketers);
   const hasAdminDashboardActions = isAdmin || (!isGuard && canViewDashboard);
+  /** الإدارة والمشرف يتجاوزان التسلسل وينوبان عن أي طرف */
+  const canOverride = isAdmin || isSupervisor;
+  const [finishPercent, setFinishPercent] = useState<5 | 7>(5);
 
   const [guardConfirm, setGuardConfirm] = useState<GuardActionModalData | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -880,6 +888,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
   // إنهاء الحجز مع خيار رفع إيصال التأمين
   const openFinishBookingModal = (bk: Booking) => {
     setFinishBookingModal(bk);
+    setFinishPercent(bk.adminApprovedFullBooking ? 7 : 5);
     setFinishReceiptFile(
       bk.insuranceRefundReceiptUrl
         ? { name: bk.insuranceRefundReceiptName || 'إيصال التأمين المسترد', dataUrl: bk.insuranceRefundReceiptUrl }
@@ -902,6 +911,9 @@ ${prop?.iban || 'SA0380000201608010998877'}
 
   const submitFinishBooking = () => {
     if (!finishBookingModal) return;
+    if (Boolean(finishBookingModal.adminApprovedFullBooking) !== (finishPercent === 7)) {
+      toggleAdminCommissionApproval(finishBookingModal.id);
+    }
     finishBookingAndReturnInsurance({
       bookingId: finishBookingModal.id,
       receiptName: finishReceiptFile?.name,
@@ -1020,7 +1032,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
       }
     }
 
-    guardProcessDeparture({
+    guardReturnInsurance({
       bookingId: bk.id,
       result: guardInspectionResult,
       deductionAmount: guardInspectionResult === 'deduction' ? guardDeductionAmount : 0,
@@ -1031,8 +1043,8 @@ ${prop?.iban || 'SA0380000201608010998877'}
     setGuardInspectionBooking(null);
     showToast(
       guardInspectionResult === 'full_refund'
-        ? `تم تسجيل خروج النزيل تماماً وإشعار المسوقة والإدارة بسلامة الاستراحة وإعادة التأمين (${bk.insuranceAmount} ر.س) ✓`
-        : `تم تسجيل خروج النزيل وتوثيق خصم (${guardDeductionAmount} ر.س) مع إرفاق الصور وإشعار المسوقة والإدارة فوراً ✓`
+        ? `تمت إعادة التأمين (${bk.insuranceAmount} ر.س) كاملاً وإشعار المسوق والإدارة والمشرف ✓`
+        : `تمت إعادة التأمين بعد خصم (${guardDeductionAmount} ر.س) مع صور الأضرار وإشعار المسوق والإدارة والمشرف ✓`
     );
   };
 
@@ -1076,11 +1088,11 @@ ${prop?.iban || 'SA0380000201608010998877'}
       confirmCashInsuranceByGuard(bk.id);
       showToast(`تم [تأكيد استلام التأمين كاش] بمبلغ (${bk.insuranceAmount} ر.س) وتوثيقه رسمياً في النظام ✓`);
     } else if (kind === 'exit') {
-      approveCleanlinessAndExit({
-        bookingId: bk.id,
-        result: 'full_refund',
-      });
-      showToast(`تم [تأكيد النظافة والخروج] للعميل (${bk.customerName}) وإغلاق دورة الحجز بنجاح ✓`);
+      guardConfirmExit(bk.id);
+      showToast(`تم تأكيد خروج العميل (${bk.customerName}) وإشعار المسوق والإدارة والمشرف ✓`);
+    } else if (kind === 'remrecv') {
+      confirmCashRemainingByGuard(bk.id);
+      showToast(`تم تأكيد استلام المتبقي كاش (${bk.remainingAmount} ر.س) وإشعار المسوق والإدارة والمشرف ✓`);
     } else {
       returnInsuranceDeposit(bk.id);
       showToast('تم إرسال تنبيه إعادة التأمين كاش للعميل بنجاح ✓');
@@ -1093,13 +1105,31 @@ ${prop?.iban || 'SA0380000201608010998877'}
       : searchFilteredTracking;
 
   /** بطاقة دخول اليوم: مسار التتبع + وصول ← المتبقي ← التأمين ← الإيصالات */
+  /** يغلّف زر مرحلة: قفل التسلسل + تحديد المنفّذ المسموح */
+  const gate =
+    (opts: { locked?: boolean; lockMsg?: string; allow: 'guard' | 'marketer' | 'override'; waitMsg: string }, fn: () => void) =>
+    () => {
+      if (opts.locked && !canOverride) {
+        showToast(opts.lockMsg || 'أكمل المرحلة السابقة أولاً');
+        return;
+      }
+      const allowed = canOverride || (opts.allow === 'guard' ? isGuard : opts.allow === 'marketer' ? !isGuard : false);
+      if (!allowed) {
+        showToast(opts.waitMsg);
+        return;
+      }
+      fn();
+    };
+
   const renderArrivalCard = (bk: Booking, key: string) => {
     const stages = getBookingStages(bk);
     const isExpanded = Boolean(expandedBookingIds[key]);
     const propGuard = guardsList?.find((g) => g.assignedPropertyId === bk.propertyId) || guard;
     const isHamran = bk.propertyId === 'hamran' || bk.propertyName.includes('حمران');
     const isPaidInFull = bk.remainingAmount <= 0;
-    const isInsurancePaid = Boolean(bk.insuranceReceivedCash || bk.insurancePaymentMethod || stages.isInsurancePaid);
+    const insPendingCash = Boolean(bk.insurancePendingCashCollection && !bk.insuranceReceivedCash && !bk.cashInsuranceConfirmedByGuard);
+    const isInsurancePaid = !insPendingCash && Boolean(bk.insuranceReceivedCash || bk.insurancePaymentMethod || stages.isInsurancePaid);
+    const remPendingCash = Boolean(bk.remainingPendingCashCollection && bk.remainingAmount > 0);
     const arrived = Boolean(bk.guestArrived || bk.arrivalConfirmedAt);
     const hasBreakfast = !(bk.withoutBreakfast || (!bk.breakfastOption && !bk.breakfastPrice));
     const hasCoord = Boolean(bk.coordinatorName || bk.coordinatorService);
@@ -1124,32 +1154,53 @@ ${prop?.iban || 'SA0380000201608010998877'}
             {
               key: 'arr',
               label: 'وصول',
-              value: arrived ? bk.guestArrivedAt || bk.arrivalConfirmedAt || 'تم ✓' : 'لم يصل',
+              value: arrived ? bk.guestArrivedAt || bk.arrivalConfirmedAt || 'تم ✓' : isGuard || canOverride ? 'تأكيد' : 'بانتظار الحارس',
               icon: arrived ? CheckCircle2 : Clock,
               tone: 'jade',
               done: arrived,
-              onClick: () => handleToggleArrival(bk),
-              title: 'تأكيد وصول النزيل',
+              onClick: gate({ allow: 'guard', waitMsg: 'تأكيد الوصول من مهام الحارس' }, () => {
+                if (arrived) showToast('تم تأكيد الوصول ✓');
+                else setGuardConfirm({ kind: 'arrive', booking: bk });
+              }),
+              title: 'تأكيد وصول النزيل (الحارس)',
             },
             {
               key: 'bal',
               label: 'المتبقي',
-              value: isPaidInFull ? 'مسدد ✓' : fmtN(bk.remainingAmount),
+              value: isPaidInFull ? 'مسدد ✓' : remPendingCash ? 'بانتظار الحارس' : fmtN(bk.remainingAmount),
               icon: DollarSign,
               tone: 'sand',
               done: isPaidInFull,
-              onClick: () => openRemainingPaymentModal(bk),
-              title: 'تذكير وسداد المتبقي',
+              onClick: () => {
+                if (!arrived && !canOverride) return showToast('أكمل مرحلة الوصول أولاً');
+                if (isPaidInFull) return showToast('تم سداد المتبقي ✓');
+                if (remPendingCash) {
+                  if (isGuard || canOverride) return setGuardConfirm({ kind: 'remrecv', booking: bk });
+                  return showToast('بانتظار تأكيد الحارس لاستلام المتبقي كاش');
+                }
+                if (isGuard) return showToast('بانتظار المسوق: تذكير العميل أو رفع الإيصال أو إرسال كاش للحارس');
+                openRemainingPaymentModal(bk);
+              },
+              title: 'المتبقي: تذكير العميل / إيصال تحويل / كاش للحارس',
             },
             {
               key: 'ins',
               label: 'التأمين',
-              value: isInsurancePaid ? 'مستلم ✓' : fmtN(bk.insuranceAmount),
+              value: isInsurancePaid ? 'مستلم ✓' : insPendingCash ? 'بانتظار الحارس' : fmtN(bk.insuranceAmount),
               icon: ShieldCheck,
               tone: 'line',
               done: isInsurancePaid,
-              onClick: () => openInsuranceActionModal(bk),
-              title: 'استلام التأمين',
+              onClick: () => {
+                if (!isPaidInFull && !canOverride) return showToast('أكمل سداد المتبقي أولاً');
+                if (isInsurancePaid) return showToast('تم استلام التأمين ✓');
+                if (insPendingCash) {
+                  if (isGuard || canOverride) return setGuardConfirm({ kind: 'insrecv', booking: bk });
+                  return showToast('بانتظار تأكيد الحارس لاستلام التأمين كاش');
+                }
+                if (isGuard) return showToast('بانتظار المسوق: رفع إيصال التأمين أو إرسال كاش للحارس');
+                openInsuranceActionModal(bk);
+              },
+              title: 'التأمين: إيصال تحويل / كاش للحارس',
             },
             {
               key: 'rc-pay',
@@ -1385,62 +1436,76 @@ ${prop?.iban || 'SA0380000201608010998877'}
 
                 const depStages = getBookingStages(bk);
                 const insRecvCount = receiptsOf(bk, ['insurance', 'insurance_refund']).length;
-                const depSteps: React.ComponentProps<typeof ActSteps>['items'] = [];
-                if (!isGuard) {
-                  depSteps.push({
+                const remDone = Boolean(bk.checkoutReminderSent);
+                const refundDone = Boolean(bk.insuranceReturned);
+                const receiptSent = Boolean(bk.refundReceiptSentAt);
+                const depSteps: React.ComponentProps<typeof ActSteps>['items'] = [
+                  {
                     key: 'rem',
                     label: 'تذكير',
-                    value: bk.checkoutReminderSent ? 'تم ✓' : 'الخروج',
+                    value: remDone ? 'تم ✓' : 'الخروج',
                     icon: MessageCircle,
                     tone: 'violet',
-                    done: Boolean(bk.checkoutReminderSent),
-                    onClick: () => handleMarketerSendCheckoutReminder(bk),
-                    title: 'تذكير بالخروج',
-                  });
-                }
-                depSteps.push({
-                  key: 'exit',
-                  label: 'تم الخروج',
-                  value: exitDone ? exitTime || '✓' : isGuard || hasAdminDashboardActions ? 'تأكيد' : 'بانتظار الحارس',
-                  icon: CheckCircle2,
-                  tone: 'jade',
-                  done: exitDone,
-                  onClick: () => {
-                    if (isGuard) setGuardConfirm({ kind: 'exit', booking: bk });
-                    else if (hasAdminDashboardActions) openGuardInspectionModal(bk);
-                    else showToast(exitDone ? 'تم تأكيد الخروج ✓' : 'بانتظار تأكيد الحارس للخروج');
+                    done: remDone,
+                    onClick: gate({ allow: 'marketer', waitMsg: 'تذكير الخروج من مهام المسوق' }, () => handleMarketerSendCheckoutReminder(bk)),
+                    title: 'تذكير العميل بالخروج (المسوق)',
                   },
-                  title: 'تأكيد النظافة والخروج',
-                });
-                depSteps.push({
-                  key: 'ref',
-                  label: 'إعادة',
-                  value: bk.insuranceReturned ? 'التأمين ✓' : bk.insuranceRefundRequested ? 'مطلوب' : 'التأمين',
-                  icon: RotateCcw,
-                  tone: bk.insuranceRefundRequested ? 'sand' : 'violet',
-                  done: Boolean(bk.insuranceReturned),
-                  onClick: () => openInsuranceRefundModal(bk),
-                  title: `استرداد التأمين المحول (${fmtN(bk.insuranceAmount)} ر.س)`,
-                });
-                depSteps.push({
-                  key: 'rc-ins',
-                  label: 'إيصال',
-                  value: insRecvCount > 0 ? 'التأمين ✓' : 'التأمين ✕',
-                  icon: Receipt,
-                  tone: 'violet',
-                  done: insRecvCount > 0,
-                  onClick: () => openReceiptGroup(bk, ['insurance', 'insurance_refund'], 'إيصالات التأمين (الاستلام والإعادة)'),
-                  title: 'نسخة إيصال التأمين',
-                });
-                depSteps.push({
-                  key: 'fin',
-                  label: 'إنهاء',
-                  value: bk.status === 'completed' ? 'منتهي ✓' : 'الحجز',
-                  icon: CheckCircle2,
-                  tone: 'line',
-                  done: bk.status === 'completed',
-                  onClick: () => openFinishBookingModal(bk),
-                });
+                  {
+                    key: 'exit',
+                    label: 'تم الخروج',
+                    value: exitDone ? exitTime || '✓' : isGuard || canOverride ? 'تأكيد' : 'بانتظار الحارس',
+                    icon: CheckCircle2,
+                    tone: 'jade',
+                    done: exitDone,
+                    onClick: gate({ locked: !remDone, lockMsg: 'أرسل تذكير الخروج للعميل أولاً', allow: 'guard', waitMsg: 'بانتظار تأكيد الحارس للخروج' }, () => {
+                      if (exitDone) showToast('تم تأكيد الخروج ✓');
+                      else setGuardConfirm({ kind: 'exit', booking: bk });
+                    }),
+                    title: 'تأكيد خروج النزيل (الحارس)',
+                  },
+                  {
+                    key: 'ref',
+                    label: 'إعادة',
+                    value: refundDone ? 'التأمين ✓' : 'التأمين',
+                    icon: RotateCcw,
+                    tone: 'violet',
+                    done: refundDone,
+                    onClick: gate({ locked: !exitDone, lockMsg: 'أكّد خروج النزيل أولاً', allow: 'guard', waitMsg: 'بانتظار الحارس لإعادة التأمين' }, () => {
+                      if (refundDone) showToast('تمت إعادة التأمين ✓');
+                      else openGuardInspectionModal(bk);
+                    }),
+                    title: `إعادة التأمين (${fmtN(bk.insuranceAmount)} ر.س) مع تصوير الأضرار إن وجدت (الحارس)`,
+                  },
+                  {
+                    key: 'rc-ins',
+                    label: 'الإيصال',
+                    value: receiptSent ? 'أُرسل ✓' : 'للعميل',
+                    icon: Receipt,
+                    tone: 'violet',
+                    done: receiptSent,
+                    onClick: gate({ locked: !refundDone, lockMsg: 'تتم إعادة التأمين أولاً', allow: 'marketer', waitMsg: 'الإيصال من المسوق أو الإدارة أو المشرف' }, () => {
+                      const returned = Math.max(0, bk.insuranceAmount - (bk.insuranceDeductionAmount || 0));
+                      const text = `السلام عليكم ${bk.customerName} 🌿 تم استرداد مبلغ التأمين (${returned} ر.س) عن حجزكم في ${bk.propertyName}${bk.insuranceDeductionAmount ? ` بعد خصم ${bk.insuranceDeductionAmount} ر.س للأضرار` : ''}. شكراً لاختياركم لنا.`;
+                      openExternalUrlSafely(buildCustomerWhatsappUrl(bk.customerPhone, text));
+                      sendRefundReceiptToCustomer({ bookingId: bk.id });
+                      showToast('تم إرسال إيصال إعادة التأمين للعميل ✓');
+                    }),
+                    title: 'إرسال إيصال إعادة التأمين للعميل',
+                  },
+                  {
+                    key: 'fin',
+                    label: 'إنهاء',
+                    value: bk.status === 'completed' ? 'منتهي ✓' : 'الحجز',
+                    icon: CheckCircle2,
+                    tone: 'line',
+                    done: bk.status === 'completed',
+                    onClick: gate({ locked: !receiptSent, lockMsg: 'أرسل إيصال الاسترداد للعميل أولاً', allow: 'override', waitMsg: 'الإنهاء من الإدارة أو المشرف' }, () => {
+                      if (bk.status === 'completed') showToast('الحجز منتهي ✓');
+                      else openFinishBookingModal(bk);
+                    }),
+                    title: 'إنهاء الحجز واعتماد النسبة (الإدارة/المشرف)',
+                  },
+                ];
 
                 return (
                   <div key={depKey} className="kt-bk">
@@ -1704,7 +1769,7 @@ ${prop?.iban || 'SA0380000201608010998877'}
           tone={
             guardConfirm.kind === 'arrive'
               ? 'saph'
-              : guardConfirm.kind === 'insrecv'
+              : guardConfirm.kind === 'insrecv' || guardConfirm.kind === 'remrecv'
               ? 'sand'
               : guardConfirm.kind === 'exit'
               ? 'garn'
@@ -1719,6 +1784,8 @@ ${prop?.iban || 'SA0380000201608010998877'}
                 label={
                   guardConfirm.kind === 'arrive'
                     ? 'تأكيد الحضور'
+                    : guardConfirm.kind === 'remrecv'
+                    ? 'استلام المتبقي'
                     : guardConfirm.kind === 'insrecv'
                     ? 'استلام التأمين'
                     : guardConfirm.kind === 'exit'
@@ -1739,9 +1806,12 @@ ${prop?.iban || 'SA0380000201608010998877'}
             <Info
               label="الجوال"
               ltr
-              wide={!(guardConfirm.kind === 'insrecv' || guardConfirm.kind === 'insret')}
+              wide={!(guardConfirm.kind === 'insrecv' || guardConfirm.kind === 'insret' || guardConfirm.kind === 'remrecv')}
               value={guardConfirm.booking.customerPhone}
             />
+            {guardConfirm.kind === 'remrecv' && (
+              <Info hi label="المتبقي" value={`${fmtN(guardConfirm.booking.remainingAmount)} ر.س`} />
+            )}
             {(guardConfirm.kind === 'insrecv' || guardConfirm.kind === 'insret') && (
               <Info hi label="التأمين" value={`${fmtN(guardConfirm.booking.insuranceAmount)} ر.س`} />
             )}
@@ -2333,6 +2403,15 @@ ${prop?.iban || 'SA0380000201608010998877'}
               )} ر.س`}
             />
           </Infos>
+          <Seg
+            label="اعتماد نسبة الحجز"
+            value={finishPercent === 7 ? 'p7' : 'p5'}
+            onChange={(v: 'p5' | 'p7') => setFinishPercent(v === 'p7' ? 7 : 5)}
+            items={[
+              { id: 'p5' as const, label: '5% حجز عادي', icon: CheckCircle2 },
+              { id: 'p7' as const, label: '7% حجز كامل', icon: CheckCircle2 },
+            ]}
+          />
           <FilePick
             name={finishReceiptFile?.name}
             placeholder="رفع إيصال التأمين المسترد"
