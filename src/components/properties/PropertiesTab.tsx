@@ -52,7 +52,7 @@ import { isExternalVideoLink, shareOrDownloadVideoFile, uploadPhotoFile } from '
 import { openExternalUrlSafely } from '../../lib/customerLinks';
 import { getAggregatedProperty } from '../../lib/propertyAggregate';
 import { fmtN } from '../../lib/format';
-import { createDefaultSectionsForProperty, resolvePropertyHasSections, getPropertyKind, getHierarchyLabels, describeChildrenCount, getChildCount } from '../../lib/propertyUtils';
+import { isLinkedEstate, createDefaultSectionsForProperty, resolvePropertyHasSections, getPropertyKind, getHierarchyLabels, describeChildrenCount, getChildCount } from '../../lib/propertyUtils';
 import { LuxIcon } from '../ui/lux';
 import { Head, Acts, Act, Infos, Info, Pill, Tag, SearchBox, Row, Switch, Acc, Field, Check as CheckRow, Sheet, Seg, Face, Tile, IconBtn } from '../ui/kit';
 import { EmptyBox } from '../dashboard/DashboardCards';
@@ -461,10 +461,11 @@ ${sectionsText ? `\n🏢 الأقسام المستقلة:${sectionsText}\n` : ''
       bathrooms: Number(editFormData.bathrooms ?? activeProperty.bathrooms) || 0,
       areaM2: Number(editFormData.areaM2 ?? activeProperty.areaM2) || 0,
       subUnitsCount: Number(editFormData.subUnitsCount ?? activeProperty.subUnitsCount) || 1,
-      hasSections:
-        editFormData.hasSections !== undefined
-          ? editFormData.hasSections
-          : resolvePropertyHasSections(activeProperty),
+      hasSections: isLinkedEstate(activeProperty)
+        ? false
+        : editFormData.hasSections !== undefined
+        ? editFormData.hasSections
+        : resolvePropertyHasSections(activeProperty),
       hasBreakfast:
         editFormData.hasBreakfast !== undefined
           ? editFormData.hasBreakfast
@@ -473,8 +474,9 @@ ${sectionsText ? `\n🏢 الأقسام المستقلة:${sectionsText}\n` : ''
         editFormData.hasCoordinatorServices !== undefined
           ? editFormData.hasCoordinatorServices
           : Boolean(activeProperty.hasCoordinatorServices),
-      sections:
-        editFormData.hasSections && (!activeProperty.sections || activeProperty.sections.length === 0)
+      sections: isLinkedEstate(activeProperty)
+        ? undefined
+        : editFormData.hasSections && (!activeProperty.sections || activeProperty.sections.length === 0)
           ? createDefaultSectionsForProperty(activeProperty)
           : editFormData.sections ?? activeProperty.sections,
     };
@@ -1715,6 +1717,7 @@ ${sectionsText ? `\n🏢 الأقسام المستقلة:${sectionsText}\n` : ''
           <div className="kt-sub">
             <p className="kt-sub-t">الخصائص</p>
             <div className="kt-fields">
+              {!isLinkedEstate(activeProperty) && (
               <div className="kt-field">
                 <span className="kt-field-h">
                   <span>أقسام مستقلة</span>
@@ -1730,6 +1733,7 @@ ${sectionsText ? `\n🏢 الأقسام المستقلة:${sectionsText}\n` : ''
                   ]}
                 />
               </div>
+              )}
               <div className="kt-field">
                 <span className="kt-field-h">
                   <span>خدمات المنسقات</span>

@@ -5208,10 +5208,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     [properties, isAdmin, currentMarketer?.name, userRole, logActivity]
   );
 
+  // تنظيف: العقار المدمج (مثل المزرعة) لا يحتفظ بأقسام افتراضية قديمة مولّدة عليه
+  useEffect(() => {
+    const dirty = (p: Property) => isLinkedEstate(p) && ((p.sections?.length || 0) > 0 || p.hasSections);
+    if (!properties.some(dirty)) return;
+    setProperties((prev) => {
+      const next = prev.map((p) =>
+        dirty(p)
+          ? {
+              ...p,
+              sections: undefined,
+              hasSections: false,
+              subUnitsCount: Array.from(new Set([...(p.mergedPropertyIds || []), ...(p.mergedConfig?.linkedPropertyIds || [])])).length || p.subUnitsCount,
+            }
+          : p
+      );
+      StorageService.set(STORAGE_KEYS.PROPERTIES, next);
+      return next;
+    });
+  }, [properties]);
+
   const togglePropertyHasSections = useCallback(
     (propertyId: string) => {
       const prop = properties.find((p) => p.id === propertyId);
       if (!prop) return;
+      // العقار المدمج (حاوية) لا يملك أقسامًا خاصة به؛ أقسامه في وحداته
+      if (isLinkedEstate(prop)) return;
       const currentHas = resolvePropertyHasSections(prop);
       const nextVal = !currentHas;
 
