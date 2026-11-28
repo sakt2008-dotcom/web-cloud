@@ -59,8 +59,9 @@ export function getAggregatedProperty(p: Property, all: Property[]): AggregatedP
         if (child) walk(child, false);
       });
     } else if (sections.length > 0) {
+      if (!isRoot) units.push(prop.name);
       sections.forEach((sec) => {
-        units.push(sec.name);
+        if (isRoot) units.push(sec.name);
         capacity += Number(sec.capacity) || 0;
         bedrooms += Number(sec.bedrooms) || 0;
         bathrooms += Number(sec.bathrooms) || 0;
@@ -96,14 +97,14 @@ export function getAggregatedProperty(p: Property, all: Property[]): AggregatedP
     // وسائط قديمة محفوظة على الحاوية نفسها: تبقى ظاهرة للنقل لاحقًا إلى وحدة
     if (childIds.length > 0 || sections.length > 0) {
       const legacyVideos = (prop.videoUrls || []).map((url, i) => ({ title: `فيديو ${i + 1}`, url, legacyIndex: i }));
-      const legacyImages = strImages(prop.images);
-      if (legacyVideos.length || legacyImages.length) {
+      // الصور القديمة نُسخت سابقًا من الوحدات، فلا تُعرض؛ تُعرض الفيديوهات القديمة فقط ليتم نقلها أو حذفها
+      if (legacyVideos.length) {
         groups.unshift({
           key: `${prop.id}:legacy`,
           unitName: `وسائط قديمة على ${prop.name}`,
           legacy: true,
           propertyId: prop.id,
-          images: legacyImages,
+          images: [],
           videos: legacyVideos,
         });
       }
