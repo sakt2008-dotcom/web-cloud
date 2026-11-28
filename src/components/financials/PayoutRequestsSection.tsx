@@ -188,7 +188,7 @@ export const PayoutRequestsSection: React.FC = () => {
         <section className="lux-card p-4 space-y-3.5">
           <Head title="طلب صرف عمولة" icon={Send} />
           <p className="kt-note">
-            {currentMarketer?.name} · العمولة {fmtN(currentMarketer?.commissionRate || 5)}%
+            {currentMarketer?.name} · العمولة {fmtN((currentMarketer?.commissionRate || 5) < 1 ? (currentMarketer?.commissionRate || 5) * 100 : currentMarketer?.commissionRate || 5)}%
           </p>
           <div className="kt-fields">
             <Field label="من تاريخ">

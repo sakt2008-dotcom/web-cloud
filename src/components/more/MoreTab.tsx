@@ -82,6 +82,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({ onOpenRoleSwitcher, onOpenGemi
     isAdmin,
     isGuard,
     isCoordinator,
+    isRestrictedMarketer,
     currentMarketer,
     currentCoordinator,
     guard,
@@ -111,7 +112,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({ onOpenRoleSwitcher, onOpenGemi
 
   const hasMoreFullAccess = isAdmin || canViewMore;
   /** المسوّق العادي: يرى ملفه وأموره المالية فقط */
-  const isMarketerView = !isAdmin && !isGuard && !isCoordinator && !hasMoreFullAccess && Boolean(currentMarketer);
+  const isMarketerView = isRestrictedMarketer;
   const selfGuard = guard;
   const {
     buildId: pwaBuildId,
