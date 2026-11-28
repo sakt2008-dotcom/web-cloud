@@ -70,6 +70,12 @@ export const MergeUnitsModal: React.FC<MergeUnitsModalProps> = ({ isOpen, onClos
   // Handle toggling unit selection
   const handleToggleUnit = (unitId: string) => {
     setErrorMsg(null);
+    const target = availableUnits.find((u) => u.id === unitId);
+    const first = availableUnits.find((u) => u.id === selectedUnitIds[0]);
+    if (!selectedUnitIds.includes(unitId) && first && target && (first.location || '').trim() !== (target.location || '').trim()) {
+      setErrorMsg('وحدات العقار الواحد يجب أن تكون في موقع واحد، ولا يمكن دمج وحدات في مواقع متفرقة.');
+      return;
+    }
     let nextIds: string[];
     if (selectedUnitIds.includes(unitId)) {
       nextIds = selectedUnitIds.filter((id) => id !== unitId);
@@ -100,6 +106,10 @@ export const MergeUnitsModal: React.FC<MergeUnitsModalProps> = ({ isOpen, onClos
       return;
     }
 
+    if (new Set(selectedUnits.map((u) => (u.location || '').trim())).size > 1) {
+      setErrorMsg('وحدات العقار الواحد يجب أن تكون في موقع واحد.');
+      return;
+    }
     const unit1 = selectedUnits[0];
     const unit2 = selectedUnits[1];
 
@@ -124,10 +134,7 @@ export const MergeUnitsModal: React.FC<MergeUnitsModalProps> = ({ isOpen, onClos
       defaultDeposit: customDeposit,
       insuranceAmount: customInsurance,
       coverImage: unit1.coverImage || unit2?.coverImage || 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80',
-      images: [
-        ...(unit1.images || []),
-        ...(unit2?.images || []),
-      ].slice(0, 8),
+      images: [], // وسائط العقار تُجمَّع تلقائيًا من وحداته
       features: [
         `دمج كامل بين استراحات: ${selectedUnits.map((u) => u.name).join(' و ')}`,
         'ربط تقويمي فوري وتزامن الإتاحة آلياً',

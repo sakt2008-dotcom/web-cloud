@@ -50,6 +50,8 @@ import { UnitContractTemplateCard } from './UnitContractTemplateCard';
 import { VideoUploader, SmartVideoPlayer } from '../video/VideoUploader';
 import { isExternalVideoLink, shareOrDownloadVideoFile, uploadPhotoFile } from '../../lib/mediaStorage';
 import { openExternalUrlSafely } from '../../lib/customerLinks';
+import { getAggregatedProperty } from '../../lib/propertyAggregate';
+import { fmtN } from '../../lib/format';
 import { createDefaultSectionsForProperty, resolvePropertyHasSections, getPropertyKind, getHierarchyLabels, describeChildrenCount, getChildCount } from '../../lib/propertyUtils';
 import { LuxIcon } from '../ui/lux';
 import { Head, Acts, Act, Infos, Info, Pill, Tag, SearchBox, Row, Switch, Acc, Field, Check as CheckRow, Sheet, Seg, Face, Tile, IconBtn } from '../ui/kit';
@@ -258,6 +260,8 @@ export const PropertiesTab: React.FC = () => {
     if (!selectedPropertyDetailId) return null;
     return properties.find((p) => p.id === selectedPropertyDetailId) || null;
   }, [properties, selectedPropertyDetailId]);
+
+  const agg = useMemo(() => (activeProperty ? getAggregatedProperty(activeProperty, properties) : null), [activeProperty, properties]);
 
   const startEditSection = (sec: PropertySection) => {
     setEditingSection(sec);
@@ -1181,6 +1185,63 @@ ${sectionsText ? `\n🏢 الأقسام المستقلة:${sectionsText}\n` : ''
             </div>
           </section>
 
+          {/* وسائط العقار/الوحدة المركّبة: تُجمّع تلقائيًا من الوحدات */}
+          {agg && agg.isContainer && (
+            <section className="lux-card p-4 space-y-3">
+              <Head title="بيانات ووسائط الوحدات" icon={Film} count={agg.totalVideos} />
+              <p className="kt-note">
+                لا يملك {activeProperty.name} بيانات أو فيديوهات خاصة به؛ تُجمَّع تلقائيًا من وحداته. أضف الفيديوهات من تعديل كل وحدة/قسم.
+              </p>
+              <Infos cols={2}>
+                <Info label="الوحدات" value={`${agg.units.length}`} />
+                <Info label="السعة" value={`${fmtN(agg.capacity)} ضيف`} />
+                <Info label="الغرف / الحمامات" value={`${agg.bedrooms} / ${agg.bathrooms}`} />
+                <Info label="المساحة" value={`${fmtN(agg.areaM2)} م²`} />
+                <Info wide label="نطاق الأسعار" value={agg.minPrice ? `${fmtN(agg.minPrice)} – ${fmtN(agg.maxPrice)} ر.س` : '—'} />
+              </Infos>
+              {agg.groups.map((g) => (
+                <div key={g.key} className="kt-sub">
+                  <p className="kt-sub-t">
+                    {g.unitName} · {g.images.length} صور · {g.videos.length} فيديو
+                  </p>
+                  {g.images.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {g.images.slice(0, 6).map((img, i) => (
+                        <img key={i} src={img} alt={g.unitName} referrerPolicy="no-referrer" className="w-full aspect-square object-cover rounded-xl" />
+                      ))}
+                    </div>
+                  )}
+                  {g.videos.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {g.videos.map((v, vi) => (
+                        <div key={vi} className="space-y-1.5">
+                          <div className="rounded-2xl overflow-hidden bg-black aspect-video">
+                            <SmartVideoPlayer url={v.url} className="w-full h-full object-cover" />
+                          </div>
+                          {g.legacy && v.legacyIndex !== undefined && hasPropertiesFullAccess && (
+                            <Act
+                              small
+                              tone="garnS"
+                              icon={Trash2}
+                              label="حذف"
+                              onClick={() => {
+                                deletePropertyVideo(g.propertyId, v.legacyIndex as number);
+                                showToast('تم حذف الفيديو القديم');
+                              }}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {g.images.length === 0 && g.videos.length === 0 && <p className="kt-note">لا وسائط لهذه الوحدة بعد.</p>}
+                </div>
+              ))}
+            </section>
+          )}
+
+          {agg && !agg.isContainer && (
+            <>
           {/* Photos Album Card */}
           <section className="lux-card p-4 space-y-3">
             <Head title="ألبوم الصور" icon={ImageIcon} count={activeProperty.images?.length || 0} />
@@ -1356,6 +1417,8 @@ ${sectionsText ? `\n🏢 الأقسام المستقلة:${sectionsText}\n` : ''
               <p className="kt-note text-center">لا توجد فيديوهات لهذا العقار بعد.</p>
             )}
           </section>
+            </>
+          )}
 
           {/* Property Guard Card - Exclusive Notifications */}
           <section className="lux-card p-4 space-y-3">
@@ -1998,6 +2061,35 @@ ${sectionsText ? `\n🏢 الأقسام المستقلة:${sectionsText}\n` : ''
               placeholder="مرفق جديد (مثال: ركن شواء)"
             />
             <Act tone="soft" icon={Plus} label="إضافة مرفق" onClick={addFeatureToSection} />
+          </div>
+
+          <div className="kt-sub">
+            <p className="kt-sub-t">فيديوهات {sectionFormData.name || 'الوحدة'} ({(sectionFormData.videoItems || []).length})</p>
+            <VideoUploader
+              propertyId={`${activeProperty?.id || 'prop'}-${editingSection?.id || 'sec'}`}
+              onUploadSuccess={(url) =>
+                setSectionFormData((prev) => {
+                  const cur = prev.videoItems || [];
+                  return { ...prev, videoItems: [...cur, { title: `فيديو ${cur.length + 1}`, url }] };
+                })
+              }
+            />
+            {(sectionFormData.videoItems || []).map((v, i) => (
+              <div key={i} className="kt-bk">
+                <div className="relative rounded-[14px] overflow-hidden bg-black aspect-video">
+                  <SmartVideoPlayer url={v.url} className="w-full h-full object-cover" />
+                </div>
+                <Act
+                  small
+                  tone="garnS"
+                  icon={Trash2}
+                  label="حذف الفيديو"
+                  onClick={() =>
+                    setSectionFormData((prev) => ({ ...prev, videoItems: (prev.videoItems || []).filter((_, j) => j !== i) }))
+                  }
+                />
+              </div>
+            ))}
           </div>
         </Sheet>
       )}

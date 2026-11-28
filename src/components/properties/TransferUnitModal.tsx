@@ -100,6 +100,15 @@ export const TransferUnitModal: React.FC<TransferUnitModalProps> = ({
       return;
     }
 
+    if (
+      mode !== 'section_to_standalone' &&
+      targetProperty &&
+      (targetProperty.location || '').trim() !== (sourceProperty.location || '').trim()
+    ) {
+      setErrorMsg('لا يمكن النقل إلى عقار في موقع مختلف؛ وحدات العقار الواحد في موقع واحد.');
+      return;
+    }
+
     const res = onExecuteTransfer({
       mode,
       sourcePropertyId: sourceProperty.id,
