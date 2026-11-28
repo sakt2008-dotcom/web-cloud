@@ -154,7 +154,8 @@ export const BookingsTab: React.FC = () => {
   }, [selectedPropertyId, selectedProperty]);
 
   const activeSection = useMemo(() => {
-    if (!selectedProperty.sections || selectedProperty.sections.length === 0 || activeSectionId === 'all') {
+    // «المزرعة» حاوية: اختيار الأجزاء من «احجز المزرعة» فقط، دون قسم مستقل
+    if (isLinkedEstate(selectedProperty) || !selectedProperty.sections || selectedProperty.sections.length === 0 || activeSectionId === 'all') {
       return null;
     }
     return selectedProperty.sections.find((s) => s.id === activeSectionId) || null;
@@ -844,7 +845,7 @@ ${mapUrl}
       )}
 
       {/* اختيار القسم (للعقارات ذات الأقسام) */}
-      {selectedProperty.sections && selectedProperty.sections.length > 0 && (
+      {!isEstateSelf && selectedProperty.sections && selectedProperty.sections.length > 0 && (
         <section className="lux-card p-4 space-y-3">
           <Head title="اختر القسم" icon={Layers} count={selectedProperty.sections.length + 1} />
           <div className="kt-grid2">

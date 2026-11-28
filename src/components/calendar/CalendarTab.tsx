@@ -512,7 +512,7 @@ export const CalendarTab: React.FC = () => {
   );
 
   const activeSection = useMemo(() => {
-    if (!selectedProperty.sections || selectedProperty.sections.length === 0 || activeSectionId === 'all') {
+    if (isLinkedEstate(selectedProperty) || !selectedProperty.sections || selectedProperty.sections.length === 0 || activeSectionId === 'all') {
       return null;
     }
     return selectedProperty.sections.find((s) => s.id === activeSectionId) || null;
@@ -1307,7 +1307,7 @@ export const CalendarTab: React.FC = () => {
       )}
 
       {/* اختيار القسم / الوحدة (للعقارات متعددة الوحدات) */}
-      {!ctxActive && selectedProperty.sections && selectedProperty.sections.length > 0 && (
+      {!ctxActive && !isEstateSelf && selectedProperty.sections && selectedProperty.sections.length > 0 && (
         <section className="lux-card p-4 space-y-3">
           <Head
             title={getPropertyKind(selectedProperty) === 'estate' ? 'اختر الوحدة' : 'اختر القسم'}

@@ -244,7 +244,7 @@ export const SupervisorTab: React.FC = () => {
   }, [selectedPropertyId, selectedProperty, activeSectionId]);
 
   const activeSection = useMemo(() => {
-    if (!selectedProperty.sections || activeSectionId === 'all') return null;
+    if (isLinkedEstate(selectedProperty) || !selectedProperty.sections || activeSectionId === 'all') return null;
     return selectedProperty.sections.find((s) => s.id === activeSectionId) || null;
   }, [selectedProperty, activeSectionId]);
 
@@ -1222,7 +1222,7 @@ ${resolvedMapUrl}
         />
       )}
 
-      {selectedProperty.sections && selectedProperty.sections.length > 0 && (
+      {!isEstateSelf && selectedProperty.sections && selectedProperty.sections.length > 0 && (
         <section className="lux-card p-4 space-y-3">
           <Head
             title={getPropertyKind(selectedProperty) === 'estate' ? 'اختر الوحدة' : 'اختر القسم'}
